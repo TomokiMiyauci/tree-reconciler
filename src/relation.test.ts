@@ -1,97 +1,333 @@
 import { describe, it, expect } from "bun:test";
-import { relate, type Assign } from "./relation";
-import { domIdentity } from "./dom";
-import { n } from "../test/helper";
+import { Identity, relate, type Relation } from "./relation.ts";
+import { VNode } from "./tree.ts";
+
+interface TestIdentity {
+  name: string;
+  key?: string;
+}
+
+const cases = [
+  {
+    name: "matches the root",
+    prev: node("A#root", {}),
+    next: node("B#root", {}),
+    pairs: [["A", "B"]],
+  },
+  {
+    name: "matches children with the same identity",
+    prev: node("A#root", {
+      "A1#item": {},
+    }),
+    next: node("B#root", {
+      "B1#item": {},
+    }),
+    pairs: [
+      ["A", "B"],
+      ["A1", "B1"],
+    ],
+  },
+  {
+    name: "does not match children with different identities",
+    prev: node("A#root", {
+      "A1#old": {},
+    }),
+    next: node("B#root", {
+      "B1#new": {},
+    }),
+    pairs: [["A", "B"]],
+  },
+  {
+    name: "matches when a child is added",
+    prev: node("A#root", {}),
+    next: node("B#root", {
+      "B1#item": {},
+    }),
+    pairs: [["A", "B"]],
+  },
+  {
+    name: "matches when a child is removed",
+    prev: node("A#root", {
+      "A1#item": {},
+    }),
+    next: node("B#root", {}),
+    pairs: [["A", "B"]],
+  },
+  {
+    name: "matches when a child is replaced",
+    prev: node("A#root", {
+      "A1#old": {},
+    }),
+    next: node("B#root", {
+      "B1#new": {},
+    }),
+    pairs: [["A", "B"]],
+  },
+  {
+    name: "matches children regardless of their order",
+    prev: node("A#root", {
+      "A1#first": {},
+      "A2#second": {},
+    }),
+    next: node("B#root", {
+      "B1#second": {},
+      "B2#first": {},
+    }),
+    pairs: [
+      ["A", "B"],
+      ["A1", "B2"],
+      ["A2", "B1"],
+    ],
+  },
+  {
+    name: "matches nested children",
+    prev: node("A#root", {
+      "A1#parent": {
+        "A2#child": {},
+      },
+    }),
+    next: node("B#root", {
+      "B1#parent": {
+        "B2#child": {},
+      },
+    }),
+    pairs: [
+      ["A", "B"],
+      ["A1", "B1"],
+      ["A2", "B2"],
+    ],
+  },
+  {
+    name: "matches nested children regardless of their order",
+    prev: node("A#root", {
+      "A1#parent": {
+        "A2#first": {},
+        "A3#second": {},
+      },
+    }),
+    next: node("B#root", {
+      "B1#parent": {
+        "B2#second": {},
+        "B3#first": {},
+      },
+    }),
+    pairs: [
+      ["A", "B"],
+      ["A1", "B1"],
+      ["A2", "B3"],
+      ["A3", "B2"],
+    ],
+  },
+  {
+    name: "matches nested children when a child is added",
+    prev: node("A#root", {
+      "A1#parent": {
+        "A2#first": {},
+      },
+    }),
+    next: node("B#root", {
+      "B1#parent": {
+        "B2#first": {},
+        "B3#second": {},
+      },
+    }),
+    pairs: [
+      ["A", "B"],
+      ["A1", "B1"],
+      ["A2", "B2"],
+    ],
+  },
+  {
+    name: "matches nested children when a child is removed",
+    prev: node("A#root", {
+      "A1#parent": {
+        "A2#first": {},
+        "A3#second": {},
+      },
+    }),
+    next: node("B#root", {
+      "B1#parent": {
+        "B2#first": {},
+      },
+    }),
+    pairs: [
+      ["A", "B"],
+      ["A1", "B1"],
+      ["A2", "B2"],
+    ],
+  },
+  {
+    name: "matches parents regardless of their order",
+    prev: node("A#root", {
+      "A1#first": {
+        "A2#child": {},
+      },
+      "A3#second": {},
+    }),
+    next: node("B#root", {
+      "B1#second": {},
+      "B2#first": {
+        "B3#child": {},
+      },
+    }),
+    pairs: [
+      ["A", "B"],
+      ["A1", "B2"],
+      ["A2", "B3"],
+      ["A3", "B1"],
+    ],
+  },
+  {
+    name: "pairs same-key siblings in order of appearance",
+    prev: node("A#root", { "A1#item": {}, "A2#item": {}, "A3#item": {} }),
+    next: node("B#root", { "B1#item": {}, "B2#item": {} }),
+    pairs: [
+      ["A", "B"],
+      ["A1", "B1"],
+      ["A2", "B2"],
+    ],
+  },
+  {
+    name: "leaves extra same-key siblings in next unmatched",
+    prev: node("A#root", { "A1#item": {}, "A2#item": {} }),
+    next: node("B#root", { "B1#item": {}, "B2#item": {}, "B3#item": {} }),
+    pairs: [
+      ["A", "B"],
+      ["A1", "B1"],
+      ["A2", "B2"],
+    ],
+  },
+  {
+    name: "pairs same-key siblings by order even when mixed with other keys",
+    prev: node("A#root", { "A1#x": {}, "A2#y": {}, "A3#x": {} }),
+    next: node("B#root", { "B1#y": {}, "B2#x": {}, "B3#x": {} }),
+    pairs: [
+      ["A", "B"],
+      ["A1", "B2"],
+      ["A2", "B1"],
+      ["A3", "B3"],
+    ],
+  },
+
+  {
+    name: "does not match a child whose parent is unmatched",
+    prev: node("A#root", { "A1#p": { "A2#child": {} } }),
+    next: node("B#root", { "B1#q": { "B2#child": {} } }),
+    pairs: [["A", "B"]],
+  },
+  {
+    name: "does not move a child to a different parent",
+    prev: node("A#root", { "A1#p": { "A2#child": {} }, "A3#q": {} }),
+    next: node("B#root", { "B1#p": {}, "B2#q": { "B3#child": {} } }),
+    pairs: [
+      ["A", "B"],
+      ["A1", "B1"],
+      ["A3", "B2"],
+    ],
+  },
+
+  {
+    name: "uses key, not name, to decide identity",
+    prev: node("A#root", { "X#one": {} }),
+    next: node("B#root", { "X#two": {} }),
+    pairs: [["A", "B"]],
+  },
+  {
+    name: "matches by key even when names differ",
+    prev: node("A#root", { "P#same": {} }),
+    next: node("B#root", { "Q#same": {} }),
+    pairs: [
+      ["A", "B"],
+      ["P", "Q"],
+    ],
+  },
+
+  {
+    name: "matches keyless siblings by name",
+    prev: node("A#root", { "span#": {}, "div#": {} }),
+    next: node("B#root", { "div#": {}, "span#": {} }),
+    pairs: [
+      ["A", "B"],
+      ["div", "div"],
+      ["span", "span"],
+    ],
+  },
+
+  {
+    name: "matches a deeply nested identical tree",
+    prev: node("A#r", { "A1#a": { "A2#b": { "A3#c": {} } } }),
+    next: node("B#r", { "B1#a": { "B2#b": { "B3#c": {} } } }),
+    pairs: [
+      ["A", "B"],
+      ["A1", "B1"],
+      ["A2", "B2"],
+      ["A3", "B3"],
+    ],
+  },
+  {
+    name: "stops descending at the first unmatched ancestor",
+    prev: node("A#r", { "A1#a": { "A2#b": { "A3#c": {} } } }),
+    next: node("B#r", { "B1#a": { "B2#x": { "B3#c": {} } } }),
+    pairs: [
+      ["A", "B"],
+      ["A1", "B1"],
+    ],
+  },
+] satisfies TestCase[];
+
+interface TestCase {
+  name: string;
+  prev: VNode<TestIdentity>;
+  next: VNode<TestIdentity>;
+  pairs: [string, string][];
+}
+
+function normalizePairs(pairs: readonly (readonly [string, string])[]) {
+  return [...pairs].sort(
+    ([a1, b1], [a2, b2]) => a1.localeCompare(a2) || b1.localeCompare(b2),
+  );
+}
+
+interface NodeChildren {
+  [k: string]: NodeChildren;
+}
+
+function node(root: string, children: NodeChildren): VNode<TestIdentity> {
+  const [name, key] = root.split("#", 2);
+
+  return {
+    identity: {
+      name,
+      key: key === "" ? undefined : key,
+    },
+    children: Object.entries(children).map(([id, child]) => node(id, child)),
+  };
+}
+
+const identity = {
+  key(id: TestIdentity): string {
+    return id.key || id.name;
+  },
+} satisfies Identity<TestIdentity>;
+
+function pairsOf(
+  relation: Relation<TestIdentity>,
+): (readonly [string, string])[] {
+  return [...relation.pairs]
+    .map(({ prev, next }) => [prev.identity.name, next.identity.name] as const)
+    .toSorted(
+      ([a1, b1], [a2, b2]) => a1.localeCompare(a2) || b1.localeCompare(b2),
+    );
+}
 
 describe("relate", () => {
-  it("キーが一致するノードを、並べ替えがあっても対にする", () => {
-    const [a, b, c] = ["a", "b", "c"].map((k) => n("li", [], k));
-    const [a2, b2, c2] = ["a", "b", "c"].map((k) => n("li", [], k));
-    const p = n("ul", [a, b, c]);
-    const q = n("ul", [c2, a2, b2]);
-    const r = relate(p, q, domIdentity);
+  for (const testCase of cases) {
+    it(testCase.name, () => {
+      const relation = relate(testCase.prev, testCase.next, identity);
 
-    expect(r.pairs.size).toBe(4);
-
-    const nextOf = new Map([...r.pairs].map((x) => [x.prev, x.next]));
-    expect(nextOf.get(a)).toBe(a2);
-    expect(nextOf.get(b)).toBe(b2);
-    expect(nextOf.get(c)).toBe(c2);
-    expect(nextOf.get(p)).toBe(q);
-  });
-
-  it("旧側のみ・新側のみは部分木の根として出る(子は単独で出ない)", () => {
-    const b = n("li", [n("em")], "b");
-    const x = n("li", [n("strong")], "x");
-    const r = relate(
-      n("ul", [n("li", [], "a"), b]),
-      n("ul", [n("li", [], "a"), x]),
-      domIdentity,
-    );
-  });
-
-  it("kind が違えば同じキーでも対にならない", () => {
-    const r = relate(
-      n("ul", [n("li", [], "a")]),
-      n("ul", [n("div", [], "a")]),
-      domIdentity,
-    );
-    expect(r.pairs.size).toBe(1); // ul のみ
-  });
-
-  it("キーなし同士は同じ kind なら出現順に対にする", () => {
-    const [s1, s2] = [n("span"), n("span")];
-    const [t1, t2] = [n("span"), n("span")];
-    const r = relate(n("p", [s1, s2]), n("p", [t1, t2]), domIdentity);
-    const m = new Map([...r.pairs].map((x) => [x.next, x.prev]));
-    expect(m.get(t1)).toBe(s1);
-    expect(m.get(t2)).toBe(s2);
-  });
-
-  it("キーなしの旧とキーありの新は対にならない(同一性定義の帰結)", () => {
-    const r = relate(
-      n("main", [n("div")]),
-      n("main", [n("div", [], "a")]),
-      domIdentity,
-    );
-    expect(r.pairs.size).toBe(1);
-  });
-
-  it("対称性: prev と next を入れ替えても成立し、only が入れ替わる", () => {
-    const p = n("ul", [n("li", [], "a"), n("li", [], "b")]);
-    const q = n("ul", [n("li", [], "b")]);
-    const fwd = relate(p, q, domIdentity);
-    const bwd = relate(q, p, domIdentity);
-    expect(fwd.pairs.size).toBe(bwd.pairs.size);
-  });
-
-  it("ルートの同一性が合わなければ例外", () => {
-    expect(() => relate(n("div"), n("span"), domIdentity)).toThrow(
-      "root identity mismatch",
-    );
-  });
-
-  describe("Assign の契約違反は境界で検出される", () => {
-    const p = n("ul", [n("li", [], "a"), n("li", [], "b")]);
-    const q = n("ul", [n("li", [], "a"), n("li", [], "b")]);
-
-    it("一対一でない", () => {
-      const bad: Assign = (prev, next) => [
-        { prev: prev[0], next: next[0] },
-        { prev: prev[0], next: next[1] },
-      ];
-      expect(() => relate(p, q, domIdentity, bad)).toThrow();
-    });
-    it("同一でないものを対にする", () => {
-      const bad: Assign = (prev, next) => [{ prev: prev[0], next: next[1] }];
-      expect(() => relate(p, q, domIdentity, bad)).toThrow(
-        "pair has different key",
+      expect(normalizePairs(pairsOf(relation))).toEqual(
+        normalizePairs(testCase.pairs),
       );
     });
-    it("子でないノードを対にする", () => {
-      const stranger = n("li", [], "a");
-      const bad: Assign = (_, next) => [{ prev: stranger, next: next[0] }];
-      expect(() => relate(p, q, domIdentity, bad)).toThrow("not a child pair");
-    });
-  });
+  }
 });
