@@ -1,5 +1,5 @@
 import type { VNode } from "./tree";
-import { relate, assignByKey, type Assign } from "./relation";
+import { relate } from "./relation";
 import { plan, replace } from "./plan";
 import { script } from "./script";
 import { execute, type Host, type Binding } from "./operation";
@@ -9,17 +9,13 @@ export interface Root {
   unmount(): void;
 }
 
-export function createRoot<N>(
-  host: Host<N>,
-  container: N,
-  assign: Assign = assignByKey,
-): Root {
+export function createRoot<N>(host: Host<N>, container: N): Root {
   const binding: Binding<N> = new WeakMap();
   let current: VNode | null = null;
 
   const apply = (next: VNode | null) => {
     if (current && next) {
-      const relation = relate(current, next, assign);
+      const relation = relate(current, next);
       const structPlan = plan(relation);
       const structOperation = script(structPlan);
 

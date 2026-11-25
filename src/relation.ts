@@ -11,15 +11,9 @@ export interface Relation {
   readonly pairs: ReadonlySet<Pair>;
 }
 
-export type Assign = (
-  prev: readonly VNode[],
-  next: readonly VNode[],
-) => readonly Pair[];
-
-// 方針: 同じ key の旧の子を出現順に並べ、新の子を先頭から見て、
-//       同じ key で未使用の最初の旧の子と対にする
-export const assignByKey: Assign = (prev, next) => {
+function pairSiblings(prev: readonly VNode[], next: readonly VNode[]): Pair[] {
   const queues = new Map<string, VNode[]>();
+
   for (const v of prev) {
     const q = queues.get(v.key);
     if (q) q.push(v);
@@ -37,13 +31,9 @@ export const assignByKey: Assign = (prev, next) => {
     out.push({ prev: q[i], next: n });
   }
   return out;
-};
+}
 
-export function relate(
-  prev: VNode,
-  next: VNode,
-  assign: Assign = assignByKey,
-): Relation {
+export function relate(prev: VNode, next: VNode): Relation {
   const pairs = new Set<Pair>();
   const stack: Pair[] = [];
 
@@ -55,19 +45,9 @@ export function relate(
 
   while (stack.length) {
     const parent = stack.pop()!;
-    const prevKids = new Set(parent.prev.children);
-    const nextKids = new Set(parent.next.children);
-    const usedPrev = new Set<VNode>();
-    const usedNext = new Set<VNode>();
+    const siblings = pairSiblings(parent.prev.children, parent.next.children);
 
-    for (const q of assign(parent.prev.children, parent.next.children)) {
-      if (!prevKids.has(q.prev) || !nextKids.has(q.next))
-        throw new Error("not a child pair");
-      if (usedPrev.has(q.prev) || usedNext.has(q.next))
-        throw new Error("not one-to-one");
-      if (q.prev.key !== q.next.key) throw new Error("pair has different key");
-      usedPrev.add(q.prev);
-      usedNext.add(q.next);
+    for (const q of siblings) {
       pairs.add(q);
       stack.push(q);
     }
