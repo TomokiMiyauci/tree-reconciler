@@ -8,14 +8,8 @@ export interface Pair {
   readonly next: VNode;
 }
 
-/**
- * The correspondence between two trees.
- */
-export interface Relation {
-  readonly prev: VNode;
-  readonly next: VNode;
-  readonly pairs: ReadonlySet<Pair>;
-}
+// 新ノード → 対応する旧ノード。
+export type Counterparts = ReadonlyMap<VNode, VNode>;
 
 /**
  * Pairs equivalent siblings in their occurrence order.
@@ -23,29 +17,27 @@ export interface Relation {
  * For each node in the next siblings, pairs it with the first
  * unused node having the same key in the previous siblings.
  */
-function pairSiblings(prev: readonly VNode[], next: readonly VNode[]): Pair[] {
+function pairSiblings(
+  prevChildren: readonly VNode[],
+  nextChildren: readonly VNode[],
+): [next: VNode, prev: VNode][] {
   const queues = new Map<string, VNode[]>();
-
-  for (const node of prev) {
-    const queue = queues.get(node.key);
-    if (queue) queue.push(node);
-    else queues.set(node.key, [node]);
+  for (const child of prevChildren) {
+    const queue = queues.get(child.key);
+    if (queue) queue.push(child);
+    else queues.set(child.key, [child]);
   }
-
   const cursors = new Map<string, number>();
-  const pairs: Pair[] = [];
 
-  for (const nextNode of next) {
-    const queue = queues.get(nextNode.key);
+  const pairs: [VNode, VNode][] = [];
+  for (const next of nextChildren) {
+    const queue = queues.get(next.key);
     if (!queue) continue;
-
-    const index = cursors.get(nextNode.key) ?? 0;
-    if (index >= queue.length) continue;
-
-    cursors.set(nextNode.key, index + 1);
-    pairs.push({ prev: queue[index], next: nextNode });
+    const cursor = cursors.get(next.key) ?? 0;
+    if (cursor >= queue.length) continue;
+    cursors.set(next.key, cursor + 1);
+    pairs.push([next, queue[cursor]]);
   }
-
   return pairs;
 }
 
@@ -56,28 +48,18 @@ function pairSiblings(prev: readonly VNode[], next: readonly VNode[]): Pair[] {
  * For each paired parent, its children are paired by key and
  * occurrence order. Descendants of unpaired nodes are not traversed.
  */
-export function relate(prev: VNode, next: VNode): Relation {
-  const pairs = new Set<Pair>();
-  const stack: Pair[] = [];
+export function relate(prevRoot: VNode, nextRoot: VNode): Counterparts | null {
+  if (prevRoot.key !== nextRoot.key) return null;
 
-  if (prev.key === next.key) {
-    const rootPair = { prev, next };
-    pairs.add(rootPair);
-    stack.push(rootPair);
-  }
+  const counterparts = new Map<VNode, VNode>([[nextRoot, prevRoot]]);
+  const stack: [next: VNode, prev: VNode][] = [[nextRoot, prevRoot]];
 
   while (stack.length) {
-    const parentPair = stack.pop()!;
-    const childPairs = pairSiblings(
-      parentPair.prev.children,
-      parentPair.next.children,
-    );
-
-    for (const pair of childPairs) {
-      pairs.add(pair);
+    const [next, prev] = stack.pop()!;
+    for (const pair of pairSiblings(prev.children, next.children)) {
+      counterparts.set(pair[0], pair[1]);
       stack.push(pair);
     }
   }
-
-  return { prev, next, pairs };
+  return counterparts;
 }

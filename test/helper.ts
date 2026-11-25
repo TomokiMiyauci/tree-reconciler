@@ -1,6 +1,7 @@
 import type { VNode } from "../src/tree";
 import type { Host } from "../src/operation";
 import type { DomMeta } from "../src/dom";
+import type { Observer } from "../src/operation.ts";
 
 export type V = VNode;
 
@@ -66,4 +67,15 @@ export function fakeHost() {
   };
   const container: FNode = { label: "container", children: [], parent: null };
   return { host, stats, container };
+}
+
+export function recorder() {
+  const events: string[] = [];
+  const observer: Observer<FNode> = {
+    created: (vnode) => events.push(`created ${label(vnode)}`),
+    matched: (prev, next) =>
+      events.push(`matched ${label(prev)}>${label(next)}`),
+    removed: (vnode) => events.push(`removed ${label(vnode)}`),
+  };
+  return { events, observer };
 }

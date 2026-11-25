@@ -1,54 +1,44 @@
 import type { VNode } from "./tree.ts";
-import type { Pair, Relation } from "./relation.ts";
+import type { Counterparts } from "./relation.ts";
 
-export type Slot =
-  | { readonly tag: "kept"; readonly prev: VNode; readonly next: VNode }
-  | { readonly tag: "fresh"; readonly next: VNode };
+// 目標の並びの1要素。旧に対応があれば matched、なければ added
+export type Placement =
+  | { readonly tag: "matched"; readonly prev: VNode; readonly next: VNode }
+  | { readonly tag: "added"; readonly next: VNode };
 
 export interface ChildrenPlan {
-  readonly parent: Pair;
-  readonly slots: readonly Slot[];
-  readonly dropped: readonly VNode[];
+  readonly prevParent: VNode;
+  readonly nextParent: VNode;
+  readonly arrangement: readonly Placement[]; // 目標の並び(順序に意味がある)
+  readonly removed: readonly VNode[]; // 目標の並びに現れない旧の子(導出値)
 }
 
-export type StructPlan =
-  | { readonly kind: "patch"; readonly children: readonly ChildrenPlan[] }
-  | {
-      readonly kind: "replace";
-      readonly dropped: VNode | null;
-      readonly fresh: VNode | null;
-    };
+export function plan(counterparts: Counterparts): ChildrenPlan[] {
+  const plans: ChildrenPlan[] = [];
 
-export function replace(
-  dropped: VNode | null,
-  fresh: VNode | null,
-): StructPlan {
-  return { kind: "replace", dropped, fresh };
-}
-
-export function plan(r: Relation): StructPlan {
-  if (r.pairs.size === 0) return replace(r.prev, r.next);
-
-  const prevOf = new Map<VNode, VNode>();
-  for (const p of r.pairs) prevOf.set(p.next, p.prev);
-
-  const children: ChildrenPlan[] = [];
-  for (const parent of r.pairs) {
-    const slots: Slot[] = parent.next.children.map((n) => {
-      const p = prevOf.get(n);
-      return p ? { tag: "kept", prev: p, next: n } : { tag: "fresh", next: n };
+  for (const [nextParent, prevParent] of counterparts) {
+    const arrangement: Placement[] = nextParent.children.map((next) => {
+      const prev = counterparts.get(next);
+      return prev ? { tag: "matched", prev, next } : { tag: "added", next };
     });
+
     const keptPrev = new Set<VNode>();
-    for (const s of slots) if (s.tag === "kept") keptPrev.add(s.prev);
-    const dropped = parent.prev.children.filter((c) => !keptPrev.has(c));
+    for (const placement of arrangement) {
+      if (placement.tag === "matched") keptPrev.add(placement.prev);
+    }
+    const removed = prevParent.children.filter((child) => !keptPrev.has(child));
 
     const unchanged =
-      dropped.length === 0 &&
-      slots.length === parent.prev.children.length &&
-      slots.every(
-        (s, i) => s.tag === "kept" && s.prev === parent.prev.children[i],
+      removed.length === 0 &&
+      arrangement.length === prevParent.children.length &&
+      arrangement.every(
+        (placement, index) =>
+          placement.tag === "matched" &&
+          placement.prev === prevParent.children[index],
       );
-    if (!unchanged) children.push({ parent, slots, dropped });
+    if (!unchanged) {
+      plans.push({ prevParent, nextParent, arrangement, removed });
+    }
   }
-  return { kind: "patch", children };
+  return plans;
 }

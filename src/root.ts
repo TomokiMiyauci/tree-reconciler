@@ -1,8 +1,8 @@
-import type { VNode } from "./tree";
-import { relate } from "./relation";
-import { plan, replace } from "./plan";
-import { script } from "./script";
-import { execute, type Host, type Binding } from "./operation";
+import type { VNode } from "./tree.ts";
+import { relate } from "./relation.ts";
+import { plan } from "./plan.ts";
+import { script, scriptRoot } from "./script.ts";
+import { execute, type Host, type Binding } from "./operation.ts";
 
 export interface Root {
   render(next: VNode): void;
@@ -15,21 +15,33 @@ export function createRoot<N>(host: Host<N>, container: N): Root {
 
   const apply = (next: VNode | null) => {
     if (current && next) {
-      const relation = relate(current, next);
-      const structPlan = plan(relation);
-      const structOperation = script(structPlan);
+      const matching = relate(current, next);
 
-      execute(host, binding, container, relation.pairs, structOperation);
-    } else {
+      if (matching) {
+        execute(host, binding, container, matching, script(plan(matching)), {});
+      } else {
+        // ルートが対にならない: 旧を外して新を作る
+        execute(
+          host,
+          binding,
+          container,
+          null,
+          scriptRoot({ removed: current, added: next }),
+          {},
+        );
+      }
+    } else if (current || next) {
+      // 初回(removed なし)または unmount(added なし)
       execute(
         host,
         binding,
         container,
-        new Set(),
-        script(replace(current, next)),
+        null,
+        scriptRoot({ removed: current, added: next }),
+        {},
       );
     }
-    current = next;
+    current = next; // execute が成功した後にだけ更新する
   };
 
   return { render: apply, unmount: () => apply(null) };

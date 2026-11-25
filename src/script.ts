@@ -1,8 +1,8 @@
 import type { VNode } from "./tree.ts";
-import type { ChildrenPlan, StructPlan } from "./plan.ts";
+import type { ChildrenPlan } from "./plan.ts";
 
 export type Anchor = {
-  readonly parent: VNode | null; // null はコンテナ直下
+  readonly parent: VNode | null;
   readonly before: VNode | null;
 };
 
@@ -11,64 +11,84 @@ export type StructOp =
   | { readonly kind: "move"; readonly node: VNode; readonly to: Anchor }
   | { readonly kind: "remove"; readonly node: VNode };
 
-export function script(sp: StructPlan): StructOp[] {
+export type RootChange = {
+  readonly removed: VNode | null;
+  readonly added: VNode | null;
+};
+
+export function scriptRoot(change: RootChange): StructOp[] {
   const ops: StructOp[] = [];
-
-  if (sp.kind === "replace") {
-    if (sp.dropped) ops.push({ kind: "remove", node: sp.dropped });
-    if (sp.fresh)
-      ops.push({
-        kind: "create",
-        node: sp.fresh,
-        at: { parent: null, before: null },
-      });
-    return ops;
+  if (change.removed) ops.push({ kind: "remove", node: change.removed });
+  if (change.added) {
+    ops.push({
+      kind: "create",
+      node: change.added,
+      at: { parent: null, before: null },
+    });
   }
+  return ops;
+}
 
-  for (const children of sp.children) scriptChildren(children, ops);
+// 契約: 1つの親に対する操作列は、先頭から順に実行されて初めて意味を持つ。
+//       親が異なる操作同士は独立で、並べ替えてよい。
+export function script(plans: readonly ChildrenPlan[]): StructOp[] {
+  const ops: StructOp[] = [];
+  for (const childrenPlan of plans) scriptChildren(childrenPlan, ops);
   return ops;
 }
 
 function scriptChildren(
-  { parent, slots, dropped }: ChildrenPlan,
+  { prevParent, nextParent, arrangement, removed }: ChildrenPlan,
   ops: StructOp[],
 ): void {
-  for (const node of dropped) ops.push({ kind: "remove", node });
+  for (const node of removed) ops.push({ kind: "remove", node });
 
-  const index = new Map<VNode, number>();
-  parent.prev.children.forEach((c, i) => index.set(c, i));
+  const prevIndex = new Map<VNode, number>();
+  prevParent.children.forEach((child, index) => prevIndex.set(child, index));
   const stable = stableSet(
-    slots.map((s) => (s.tag === "kept" ? index.get(s.prev)! : -1)),
+    arrangement.map((placement) =>
+      placement.tag === "matched" ? prevIndex.get(placement.prev)! : -1,
+    ),
   );
 
-  for (let i = slots.length - 1; i >= 0; i--) {
-    const s = slots[i];
-    const at: Anchor = {
-      parent: parent.next,
-      before: slots[i + 1]?.next ?? null,
+  // 後ろから。次の兄弟が配置済みのアンカー
+  for (let index = arrangement.length - 1; index >= 0; index--) {
+    const placement = arrangement[index];
+    const anchor: Anchor = {
+      parent: nextParent,
+      before: arrangement[index + 1]?.next ?? null,
     };
-    if (s.tag === "fresh") ops.push({ kind: "create", node: s.next, at });
-    else if (!stable[i]) ops.push({ kind: "move", node: s.next, to: at });
+    if (placement.tag === "added") {
+      ops.push({ kind: "create", node: placement.next, at: anchor });
+    } else if (!stable[index]) {
+      ops.push({ kind: "move", node: placement.next, to: anchor });
+    }
   }
 }
 
-function stableSet(seq: number[]): Uint8Array {
+// 最長増加部分列に含まれる位置を 1 にする(全部 0 でも結果は正しい)
+function stableSet(sequence: number[]): Uint8Array {
   const tails: number[] = [];
-  const back = new Int32Array(seq.length).fill(-1);
-  for (let i = 0; i < seq.length; i++) {
-    if (seq[i] < 0) continue;
-    let lo = 0,
-      hi = tails.length;
-    while (lo < hi) {
-      const m = (lo + hi) >> 1;
-      if (seq[tails[m]] < seq[i]) lo = m + 1;
-      else hi = m;
+  const back = new Int32Array(sequence.length).fill(-1);
+  for (let index = 0; index < sequence.length; index++) {
+    if (sequence[index] < 0) continue;
+    let low = 0;
+    let high = tails.length;
+    while (low < high) {
+      const middle = (low + high) >> 1;
+      if (sequence[tails[middle]] < sequence[index]) low = middle + 1;
+      else high = middle;
     }
-    if (lo > 0) back[i] = tails[lo - 1];
-    tails[lo] = i;
+    if (low > 0) back[index] = tails[low - 1];
+    tails[low] = index;
   }
-  const mark = new Uint8Array(seq.length);
-  for (let k = tails.length ? tails[tails.length - 1] : -1; k >= 0; k = back[k])
-    mark[k] = 1;
-  return mark;
+  const marks = new Uint8Array(sequence.length);
+  for (
+    let cursor = tails.length ? tails[tails.length - 1] : -1;
+    cursor >= 0;
+    cursor = back[cursor]
+  ) {
+    marks[cursor] = 1;
+  }
+  return marks;
 }
