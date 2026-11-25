@@ -1,8 +1,8 @@
-import type { VNode } from "./tree";
-import { relate, assignByKey, type Assign, type Identity } from "./relation";
-import { plan } from "./plan";
-import { script } from "./script";
-import { execute, mountRoot, type Host, type Binding } from "./operation";
+import type { VNode } from "./tree.ts";
+import { relate, assignByKey, type Assign } from "./relation.ts";
+import { plan, replace } from "./plan.ts";
+import { script } from "./script.ts";
+import { execute, type Host, type Binding } from "./operation.ts";
 
 export interface Root<T> {
   render(next: VNode<T>): void;
@@ -17,22 +17,23 @@ export function createRoot<N, T>(
   const binding: Binding<N, T> = new WeakMap();
   let current: VNode<T> | null = null;
 
+  const apply = (next: VNode<T> | null) => {
+    if (current && next) {
+      const relation = relate(current, next, host, assign);
+      const structPlan = plan(relation);
+      const operation = script(structPlan);
+
+      execute(host, binding, container, relation.pairs, operation);
+    } else {
+      const operation = script(replace(current, next));
+
+      execute(host, binding, container, new Set(), operation);
+    }
+    current = next;
+  };
+
   return {
-    render(next) {
-      if (current === null) {
-        mountRoot(host, binding, next, container);
-      } else if (host.key(current.identity) !== host.key(next.identity)) {
-        host.remove(binding.get(current)!);
-        mountRoot(host, binding, next, container);
-      } else {
-        const rel = relate(current, next, host, assign);
-        execute(host, binding, rel, script(plan(rel)));
-      }
-      current = next;
-    },
-    unmount() {
-      if (current) host.remove(binding.get(current)!);
-      current = null;
-    },
+    render: (next) => apply(next),
+    unmount: () => apply(null),
   };
 }

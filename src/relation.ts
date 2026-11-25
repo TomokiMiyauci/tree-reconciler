@@ -1,4 +1,4 @@
-import type { VNode } from "./tree";
+import type { VNode } from "./tree.ts";
 
 export interface Identity<T> {
   key(a: T): string;
@@ -36,7 +36,6 @@ export const assignByKey: Assign = <T>(
     if (q) q.push(v);
     else queues.set(k, [v]);
   }
-  // 先頭から取り出すため、各キューは先頭位置のカーソルで管理する
   const cursor = new Map<string, number>();
 
   const out: Pair<T>[] = [];
@@ -58,12 +57,14 @@ export function relate<T>(
   id: Identity<T>,
   assign: Assign = assignByKey,
 ): Relation<T> {
-  if (id.key(prev.identity) !== id.key(next.identity))
-    throw new Error("root identity mismatch");
+  const pairs = new Set<Pair<T>>();
+  const stack: Pair<T>[] = [];
 
-  const root: Pair<T> = { prev, next };
-  const pairs = new Set<Pair<T>>([root]);
-  const stack: Pair<T>[] = [root];
+  if (id.key(prev.identity) === id.key(next.identity)) {
+    const root = { prev, next };
+    pairs.add(root);
+    stack.push(root);
+  }
 
   while (stack.length) {
     const parent = stack.pop()!;
@@ -72,7 +73,7 @@ export function relate<T>(
     const usedPrev = new Set<VNode<T>>();
     const usedNext = new Set<VNode<T>>();
 
-    // assign は外部の差し替え部品なので、契約を境界で確認する(子の数に比例)
+    // assign は差し替え部品なので、契約を境界で確認する
     for (const q of assign(parent.prev.children, parent.next.children, id)) {
       if (!prevKids.has(q.prev) || !nextKids.has(q.next))
         throw new Error("not a child pair");
@@ -83,7 +84,7 @@ export function relate<T>(
       usedPrev.add(q.prev);
       usedNext.add(q.next);
       pairs.add(q);
-      stack.push(q); // 親がペアの子だけ下へ潜る(親の整合は構造上成立)
+      stack.push(q);
     }
   }
   return { prev, next, pairs };

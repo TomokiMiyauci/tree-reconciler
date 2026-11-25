@@ -22,7 +22,7 @@ describe("script", () => {
   it("末尾追加: create 1つだけ、アンカーは末尾", () => {
     const [op] = ops(["a", "b"], ["a", "b", "x"]);
     expect(op.kind).toBe("create");
-    if (op.kind === "create") expect(op.at.before).toBeNull();
+    if (op.kind === "create") expect(op.at?.before).toBeNull();
   });
 
   it("先頭削除: remove のみ", () => {

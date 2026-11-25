@@ -273,6 +273,63 @@ const cases = [
       ["A1", "B1"],
     ],
   },
+  {
+    name: "matches duplicate identities in order",
+    prev: node("A#r", { "A1#a": {}, "A2#a": {} }),
+    next: node("B#r", { "B1#a": {}, "B2#a": {} }),
+    pairs: [
+      ["A", "B"],
+      ["A1", "B1"],
+      ["A2", "B2"],
+    ],
+  },
+  {
+    name: "matches the first duplicate identity",
+    prev: node("A#r", {
+      "A1#a": {},
+    }),
+    next: node("B#r", {
+      "B1#a": {},
+      "B2#a": {},
+    }),
+    pairs: [
+      ["A", "B"],
+      ["A1", "B1"],
+    ],
+  },
+  {
+    name: "matches the first available duplicate identity",
+    prev: node("A#r", {
+      "A1#a": {},
+      "A2#a": {},
+    }),
+    next: node("B#r", {
+      "B1#a": {},
+    }),
+    pairs: [
+      ["A", "B"],
+      ["A1", "B1"],
+    ],
+  },
+  {
+    name: "matches duplicate identities in order regardless of surrounding nodes",
+    prev: node("A#r", {
+      "A1#a": {},
+      "A2#b": {},
+      "A3#a": {},
+    }),
+    next: node("B#r", {
+      "B1#a": {},
+      "B2#a": {},
+      "B3#b": {},
+    }),
+    pairs: [
+      ["A", "B"],
+      ["A1", "B1"],
+      ["A2", "B3"],
+      ["A3", "B2"],
+    ],
+  },
 ] satisfies TestCase[];
 
 interface TestCase {

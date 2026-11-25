@@ -1,7 +1,7 @@
 import { describe, it, expect } from "bun:test";
 import { JSDOM } from "jsdom";
 import { createRoot } from "./root";
-import { DOMHost, domIdentity } from "./dom";
+import { DOMHost } from "./dom";
 import { n } from "../test/helper";
 
 const setup = () => {

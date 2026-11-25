@@ -3,14 +3,16 @@ import fc from "fast-check";
 import { relate } from "./relation";
 import { plan } from "./plan";
 import { script } from "./script";
-import { execute, mountRoot } from "./operation";
+import { execute, mount } from "./operation";
 import { domIdentity } from "./dom";
 import { n, show, showHost, fakeHost, type V } from "../test/helper";
 
 function setup(prev: V) {
   const env = fakeHost();
   const binding = new WeakMap();
-  mountRoot(env.host, binding, prev, env.container);
+  // mountRoot(env.host, binding, prev, env.container);
+  env.host.insert(env.container, mount(env.host, binding, prev), null);
+
   return { ...env, binding };
 }
 
@@ -18,14 +20,14 @@ describe("execute", () => {
   it("対応するノードは作り直さず、ホストのノードを引き継ぐ", () => {
     const p = n("ul", [n("li", [], "a"), n("li", [], "b")]);
     const q = n("ul", [n("li", [], "b"), n("li", [], "a")]);
-    const { host, binding, stats } = setup(p);
+    const { host, binding, stats, container } = setup(p);
     const before = new Map(
       p.children.map((c) => [c.identity.key, binding.get(c)]),
     );
     const createdBefore = stats.created;
 
     const rel = relate(p, q, domIdentity);
-    execute(host, binding, rel, script(plan(rel)));
+    execute(host, binding, container, rel.pairs, script(plan(rel)));
 
     expect(stats.created).toBe(createdBefore);
     for (const c of q.children)
@@ -39,7 +41,7 @@ describe("execute", () => {
     const base = stats.created;
 
     const rel = relate(p, q, domIdentity);
-    execute(host, binding, rel, script(plan(rel)));
+    execute(host, binding, container, rel.pairs, script(plan(rel)));
 
     expect(stats.created - base).toBe(2); // li#x と em
     expect(showHost(container.children[0])).toBe(show(q));
@@ -50,7 +52,7 @@ describe("execute", () => {
     const q = n("ul", [n("li", [], "b")]);
     const { host, binding, container } = setup(p);
     const rel = relate(p, q, domIdentity);
-    execute(host, binding, rel, script(plan(rel)));
+    execute(host, binding, container, rel.pairs, script(plan(rel)));
     expect(showHost(container.children[0])).toBe("ul(li#b)");
   });
 
@@ -64,7 +66,7 @@ describe("execute", () => {
         ...rel,
         pairs: new Set(reverse ? [...rel.pairs].reverse() : rel.pairs),
       };
-      execute(host, binding, shuffled, script(plan(shuffled)));
+      execute(host, binding, container, shuffled.pairs, script(plan(shuffled)));
       return showHost(container.children[0]);
     };
     expect(run(true)).toBe(run(false));
@@ -77,7 +79,7 @@ describe("execute", () => {
     const q = n("div", [n("p", [], "x"), shared]);
     const { host, binding, container } = setup(p);
     const rel = relate(p, q, domIdentity);
-    execute(host, binding, rel, script(plan(rel)));
+    execute(host, binding, container, rel.pairs, script(plan(rel)));
     expect(showHost(container.children[0])).toBe(show(q));
   });
 });
@@ -115,7 +117,7 @@ describe("性質", () => {
           q = rootOf(b);
         const { host, binding, container } = setup(p);
         const rel = relate(p, q, domIdentity);
-        execute(host, binding, rel, script(plan(rel)));
+        execute(host, binding, container, rel.pairs, script(plan(rel)));
         expect(showHost(container.children[0])).toBe(show(q));
       }),
     );
@@ -131,7 +133,7 @@ describe("性質", () => {
           for (const s of specs.slice(1)) {
             const next = rootOf(s);
             const rel = relate(cur, next, domIdentity);
-            execute(host, binding, rel, script(plan(rel)));
+            execute(host, binding, container, rel.pairs, script(plan(rel)));
             cur = next;
             expect(showHost(container.children[0])).toBe(show(cur));
           }
