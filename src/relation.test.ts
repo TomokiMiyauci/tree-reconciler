@@ -1,8 +1,9 @@
 import { describe, it, expect } from "bun:test";
+
 import { relate, type Relation } from "./relation.ts";
 import { VNode } from "./tree.ts";
 
-const weakmap = new WeakMap<VNode, { name: string }>();
+const names = new WeakMap<VNode, string>();
 
 const cases = [
   {
@@ -12,13 +13,27 @@ const cases = [
     pairs: [["A", "B"]],
   },
   {
-    name: "not matche the root",
+    name: "does not match the root",
     prev: node("A#root", {}),
     next: node("B#root2", {}),
     pairs: [],
   },
   {
-    name: "matches children with the same identity",
+    name: "does not descend when roots have different keys",
+    prev: node("A#root", {
+      "A1#item": {
+        "A2#child": {},
+      },
+    }),
+    next: node("B#other", {
+      "B1#item": {
+        "B2#child": {},
+      },
+    }),
+    pairs: [],
+  },
+  {
+    name: "matches children with the same key",
     prev: node("A#root", {
       "A1#item": {},
     }),
@@ -31,7 +46,7 @@ const cases = [
     ],
   },
   {
-    name: "does not match children with different identities",
+    name: "does not match children with different keys",
     prev: node("A#root", {
       "A1#old": {},
     }),
@@ -54,16 +69,6 @@ const cases = [
       "A1#item": {},
     }),
     next: node("B#root", {}),
-    pairs: [["A", "B"]],
-  },
-  {
-    name: "matches when a child is replaced",
-    prev: node("A#root", {
-      "A1#old": {},
-    }),
-    next: node("B#root", {
-      "B1#new": {},
-    }),
     pairs: [["A", "B"]],
   },
   {
@@ -181,9 +186,16 @@ const cases = [
     ],
   },
   {
-    name: "pairs same-key siblings in order of appearance",
-    prev: node("A#root", { "A1#item": {}, "A2#item": {}, "A3#item": {} }),
-    next: node("B#root", { "B1#item": {}, "B2#item": {} }),
+    name: "pairs same-key siblings in occurrence order",
+    prev: node("A#root", {
+      "A1#item": {},
+      "A2#item": {},
+      "A3#item": {},
+    }),
+    next: node("B#root", {
+      "B1#item": {},
+      "B2#item": {},
+    }),
     pairs: [
       ["A", "B"],
       ["A1", "B1"],
@@ -191,9 +203,16 @@ const cases = [
     ],
   },
   {
-    name: "leaves extra same-key siblings in next unmatched",
-    prev: node("A#root", { "A1#item": {}, "A2#item": {} }),
-    next: node("B#root", { "B1#item": {}, "B2#item": {}, "B3#item": {} }),
+    name: "leaves excess next siblings unmatched",
+    prev: node("A#root", {
+      "A1#item": {},
+      "A2#item": {},
+    }),
+    next: node("B#root", {
+      "B1#item": {},
+      "B2#item": {},
+      "B3#item": {},
+    }),
     pairs: [
       ["A", "B"],
       ["A1", "B1"],
@@ -201,9 +220,17 @@ const cases = [
     ],
   },
   {
-    name: "pairs same-key siblings by order even when mixed with other keys",
-    prev: node("A#root", { "A1#x": {}, "A2#y": {}, "A3#x": {} }),
-    next: node("B#root", { "B1#y": {}, "B2#x": {}, "B3#x": {} }),
+    name: "pairs same-key siblings in occurrence order regardless of surrounding nodes",
+    prev: node("A#root", {
+      "A1#x": {},
+      "A2#y": {},
+      "A3#x": {},
+    }),
+    next: node("B#root", {
+      "B1#y": {},
+      "B2#x": {},
+      "B3#x": {},
+    }),
     pairs: [
       ["A", "B"],
       ["A1", "B2"],
@@ -211,55 +238,110 @@ const cases = [
       ["A3", "B3"],
     ],
   },
-
   {
-    name: "does not match a child whose parent is unmatched",
-    prev: node("A#root", { "A1#p": { "A2#child": {} } }),
-    next: node("B#root", { "B1#q": { "B2#child": {} } }),
+    name: "does not match children whose parents are unmatched",
+    prev: node("A#root", {
+      "A1#p": {
+        "A2#child": {},
+      },
+    }),
+    next: node("B#root", {
+      "B1#q": {
+        "B2#child": {},
+      },
+    }),
     pairs: [["A", "B"]],
   },
   {
-    name: "does not move a child to a different parent",
-    prev: node("A#root", { "A1#p": { "A2#child": {} }, "A3#q": {} }),
-    next: node("B#root", { "B1#p": {}, "B2#q": { "B3#child": {} } }),
+    name: "does not match a child moved to a different parent",
+    prev: node("A#root", {
+      "A1#p": {
+        "A2#child": {},
+      },
+      "A3#q": {},
+    }),
+    next: node("B#root", {
+      "B1#p": {},
+      "B2#q": {
+        "B3#child": {},
+      },
+    }),
     pairs: [
       ["A", "B"],
       ["A1", "B1"],
       ["A3", "B2"],
     ],
   },
-
   {
-    name: "uses key, not name, to decide identity",
-    prev: node("A#root", { "X#one": {} }),
-    next: node("B#root", { "X#two": {} }),
+    name: "uses keys rather than names to determine equivalence",
+    prev: node("A#root", {
+      "X#one": {},
+    }),
+    next: node("B#root", {
+      "X#two": {},
+    }),
     pairs: [["A", "B"]],
   },
   {
-    name: "matches by key even when names differ",
-    prev: node("A#root", { "P#same": {} }),
-    next: node("B#root", { "Q#same": {} }),
+    name: "matches nodes with different names but the same key",
+    prev: node("A#root", {
+      "P#same": {},
+    }),
+    next: node("B#root", {
+      "Q#same": {},
+    }),
     pairs: [
       ["A", "B"],
       ["P", "Q"],
     ],
   },
-
   {
-    name: "matches keyless siblings by name",
-    prev: node("A#root", { "span#": {}, "div#": {} }),
-    next: node("B#root", { "div#": {}, "span#": {} }),
+    name: "matches keyless siblings using their names as keys",
+    prev: node("A#root", {
+      span: {},
+      div: {},
+    }),
+    next: node("B#root", {
+      div: {},
+      span: {},
+    }),
     pairs: [
       ["A", "B"],
       ["div", "div"],
       ["span", "span"],
     ],
   },
-
+  {
+    name: "matches explicit keys independently of node names",
+    prev: node("A#root", {
+      "span#div": {},
+      div: {},
+    }),
+    next: node("B#root", {
+      "div#div": {},
+      span: {},
+    }),
+    pairs: [
+      ["A", "B"],
+      ["span", "div"],
+    ],
+  },
   {
     name: "matches a deeply nested identical tree",
-    prev: node("A#r", { "A1#a": { "A2#b": { "A3#c": {} } } }),
-    next: node("B#r", { "B1#a": { "B2#b": { "B3#c": {} } } }),
+    prev: node("A#r", {
+      "A1#a": {
+        "A2#b": {
+          "A3#c": {},
+        },
+      },
+    }),
+    next: node("B#r", {
+      "B1#a": {
+        "B2#b": {
+          "B3#c": {},
+        },
+      },
+    }),
     pairs: [
       ["A", "B"],
       ["A1", "B1"],
@@ -269,17 +351,35 @@ const cases = [
   },
   {
     name: "stops descending at the first unmatched ancestor",
-    prev: node("A#r", { "A1#a": { "A2#b": { "A3#c": {} } } }),
-    next: node("B#r", { "B1#a": { "B2#x": { "B3#c": {} } } }),
+    prev: node("A#r", {
+      "A1#a": {
+        "A2#b": {
+          "A3#c": {},
+        },
+      },
+    }),
+    next: node("B#r", {
+      "B1#a": {
+        "B2#x": {
+          "B3#c": {},
+        },
+      },
+    }),
     pairs: [
       ["A", "B"],
       ["A1", "B1"],
     ],
   },
   {
-    name: "matches duplicate identities in order",
-    prev: node("A#r", { "A1#a": {}, "A2#a": {} }),
-    next: node("B#r", { "B1#a": {}, "B2#a": {} }),
+    name: "matches duplicate keys in occurrence order",
+    prev: node("A#r", {
+      "A1#a": {},
+      "A2#a": {},
+    }),
+    next: node("B#r", {
+      "B1#a": {},
+      "B2#a": {},
+    }),
     pairs: [
       ["A", "B"],
       ["A1", "B1"],
@@ -287,7 +387,7 @@ const cases = [
     ],
   },
   {
-    name: "matches the first duplicate identity",
+    name: "matches only the available duplicate",
     prev: node("A#r", {
       "A1#a": {},
     }),
@@ -301,7 +401,7 @@ const cases = [
     ],
   },
   {
-    name: "matches the first available duplicate identity",
+    name: "matches the first available duplicate",
     prev: node("A#r", {
       "A1#a": {},
       "A2#a": {},
@@ -315,7 +415,7 @@ const cases = [
     ],
   },
   {
-    name: "matches duplicate identities in order regardless of surrounding nodes",
+    name: "matches duplicate keys in occurrence order regardless of surrounding nodes",
     prev: node("A#r", {
       "A1#a": {},
       "A2#b": {},
@@ -342,14 +442,8 @@ interface TestCase {
   pairs: [string, string][];
 }
 
-function normalizePairs(pairs: readonly (readonly [string, string])[]) {
-  return [...pairs].sort(
-    ([a1, b1], [a2, b2]) => a1.localeCompare(a2) || b1.localeCompare(b2),
-  );
-}
-
 interface NodeChildren {
-  [k: string]: NodeChildren;
+  [key: string]: NodeChildren;
 }
 
 function node(root: string, children: NodeChildren): VNode {
@@ -360,22 +454,30 @@ function node(root: string, children: NodeChildren): VNode {
     children: Object.entries(children).map(([id, child]) => node(id, child)),
   } satisfies VNode;
 
-  weakmap.set(vnode, { name });
-
+  names.set(vnode, name);
   return vnode;
 }
 
-function pairsOf(relation: Relation): (readonly [string, string])[] {
-  return [...relation.pairs]
-    .map(({ prev, next }) => {
-      if (!weakmap.get(prev)) throw new Error();
-      if (!weakmap.get(next)) throw new Error();
+function normalizePairs(
+  pairs: readonly (readonly [string, string])[],
+): (readonly [string, string])[] {
+  return [...pairs].sort(
+    ([prevA, nextA], [prevB, nextB]) =>
+      prevA.localeCompare(prevB) || nextA.localeCompare(nextB),
+  );
+}
 
-      return [weakmap.get(prev)!.name, weakmap.get(next)!.name] as const;
-    })
-    .toSorted(
-      ([a1, b1], [a2, b2]) => a1.localeCompare(a2) || b1.localeCompare(b2),
-    );
+function pairsOf(relation: Relation): (readonly [string, string])[] {
+  return [...relation.pairs].map(({ prev, next }) => {
+    const prevName = names.get(prev);
+    const nextName = names.get(next);
+
+    if (prevName === undefined || nextName === undefined) {
+      throw new Error("Unknown VNode");
+    }
+
+    return [prevName, nextName] as const;
+  });
 }
 
 describe("relate", () => {
