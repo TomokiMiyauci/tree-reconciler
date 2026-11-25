@@ -12,6 +12,12 @@ const cases = [
     pairs: [["A", "B"]],
   },
   {
+    name: "not matche the root",
+    prev: node("A#root", {}),
+    next: node("B#root2", {}),
+    pairs: [],
+  },
+  {
     name: "matches children with the same identity",
     prev: node("A#root", {
       "A1#item": {},
