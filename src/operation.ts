@@ -1,46 +1,38 @@
 import type { VNode } from "./tree.ts";
-import type { Identity, Pair } from "./relation.ts";
+import type { Pair } from "./relation.ts";
 import type { Anchor, StructOp } from "./script.ts";
 
-export interface Host<N, T> extends Identity<T> {
-  create(identity: T): N;
-  insert(parent: N, node: N, before: N | null): void;
+export interface Host<N> {
+  // この VNode に対応する実体を供給する(既存ノードを返してもよい)。
+  // 参照以外(key, children)は見ない契約。メタは利用者側のテーブルで引く。
+  create(v: VNode): N;
+  insert(parent: N, node: N, before: N | null): void; // 既存ならmove
   remove(node: N): void;
 }
-export type Binding<N, T> = WeakMap<VNode<T>, N>;
+export type Binding<N> = WeakMap<VNode, N>;
 
-export function mount<N, T>(
-  host: Host<N, T>,
-  binding: Binding<N, T>,
-  v: VNode<T>,
-): N {
-  const n = host.create(v.identity);
-
+function mount<N>(host: Host<N>, binding: Binding<N>, v: VNode): N {
+  const n = host.create(v);
   binding.set(v, n);
-
   for (const c of v.children) host.insert(n, mount(host, binding, c), null);
-
   return n;
 }
 
-export function execute<N, T>(
-  host: Host<N, T>,
-  binding: Binding<N, T>,
+export function execute<N>(
+  host: Host<N>,
+  binding: Binding<N>,
   container: N,
-  pairs: ReadonlySet<Pair<T>>,
-  ops: readonly StructOp<T>[],
+  pairs: ReadonlySet<Pair>,
+  ops: readonly StructOp[],
 ): void {
-  const h = (v: VNode<T>) => binding.get(v)!;
-  const parentOf = (a: Anchor<T>) => (a.parent ? h(a.parent) : container);
-  const beforeOf = (a: Anchor<T>) => (a.before ? h(a.before) : null);
+  const h = (v: VNode) => binding.get(v)!;
+  const parentOf = (a: Anchor) => (a.parent ? h(a.parent) : container);
+  const beforeOf = (a: Anchor) => (a.before ? h(a.before) : null);
 
-  // 旧側を指す remove の対象は、引き継ぎで binding が書き換わる前に解決しておく
-  const doomed = new Map<VNode<T>, N>();
-
+  const doomed = new Map<VNode, N>();
   for (const op of ops)
     if (op.kind === "remove") doomed.set(op.node, h(op.node));
 
-  // 引き継ぎ: 「全部読んでから全部書く」。pairs の順序に依存させない
   const handed = [...pairs].map((p) => [p.next, h(p.prev)] as const);
   for (const [next, handle] of handed) binding.set(next, handle);
 

@@ -1,30 +1,46 @@
 import { describe, it, expect } from "bun:test";
 import fc from "fast-check";
-import { relate, Pair } from "./relation.ts";
-import { plan, replace } from "./plan.ts";
-import { script } from "./script.ts";
-import { execute, mount } from "./operation.ts";
-import { domIdentity, DomIdentity } from "./dom.ts";
-import { n, show, showHost, fakeHost, type V } from "../test/helper.ts";
+import { relate, type Pair, type Relation } from "../src/relation";
+import { plan, replace } from "../src/plan";
+import { script } from "../src/script";
+import { execute, type Binding } from "../src/operation";
+import {
+  n,
+  label,
+  show,
+  showHost,
+  fakeHost,
+  type FNode,
+  type V,
+} from "../test/helper";
 
-function setup(prev: V) {
+function setup(prev: V, preexisting: FNode[] = []) {
   const env = fakeHost();
-  const binding = new WeakMap();
-  // mountRoot(env.host, binding, prev, env.container);
-  env.host.insert(env.container, mount(env.host, binding, prev), null);
-
+  for (const x of preexisting) {
+    x.parent = env.container;
+    env.container.children.push(x);
+  }
+  const binding: Binding<FNode> = new WeakMap();
+  // 初回マウント: 旧がないので replace(null, prev)
+  execute(
+    env.host,
+    binding,
+    env.container,
+    new Set(),
+    script(replace(null, prev)),
+  );
   return { ...env, binding };
 }
 
+type Env = ReturnType<typeof setup>;
+
 function patchTo(
-  env: ReturnType<typeof setup>,
+  env: Env,
   prev: V,
   next: V,
-  tweak: (
-    pairs: ReadonlySet<Pair<DomIdentity>>,
-  ) => ReadonlySet<Pair<DomIdentity>> = (p) => p,
+  tweak: (pairs: ReadonlySet<Pair>) => ReadonlySet<Pair> = (p) => p,
 ) {
-  const rel = relate(prev, next, env.host);
+  const rel = relate(prev, next);
   execute(
     env.host,
     env.binding,
@@ -34,13 +50,30 @@ function patchTo(
   );
 }
 
+// 木の中に現れる、ペアになっていない部分木の根(導出)
+function roots(tree: V, matched: ReadonlySet<V>): V[] {
+  const out: V[] = [];
+  const walk = (v: V) => {
+    if (!matched.has(v)) {
+      out.push(v);
+      return;
+    }
+    v.children.forEach(walk);
+  };
+  walk(tree);
+  return out;
+}
+
+const count = (v: V): number =>
+  1 + v.children.reduce((s, c) => s + count(c), 0);
+
 describe("execute", () => {
   it("対応するノードは作り直さず、ホストのノードを引き継ぐ", () => {
     const p = n("ul", [n("li", [], "a"), n("li", [], "b")]);
     const q = n("ul", [n("li", [], "b"), n("li", [], "a")]);
     const env = setup(p);
     const before = new Map(
-      p.children.map((c) => [c.identity.key, env.binding.get(c)]),
+      p.children.map((c) => [label(c), env.binding.get(c)]),
     );
     const created = env.stats.created;
 
@@ -48,7 +81,7 @@ describe("execute", () => {
 
     expect(env.stats.created).toBe(created);
     for (const c of q.children)
-      expect(env.binding.get(c)).toBe(before.get(c.identity.key));
+      expect(env.binding.get(c)).toBe(before.get(label(c)));
   });
 
   it("pairs の列挙順に依存しない", () => {
@@ -71,33 +104,30 @@ describe("execute", () => {
   it("create は部分木ごとに作る", () => {
     const p = n("ul", [n("li", [], "a")]);
     const q = n("ul", [n("li", [], "a"), n("li", [n("em")], "x")]);
-    const { host, binding, container, stats } = setup(p);
-    const base = stats.created;
+    const env = setup(p);
+    const base = env.stats.created;
 
-    const rel = relate(p, q, domIdentity);
-    execute(host, binding, container, rel.pairs, script(plan(rel)));
+    patchTo(env, p, q);
 
-    expect(stats.created - base).toBe(2); // li#x と em
-    expect(showHost(container.children[0])).toBe(show(q));
+    expect(env.stats.created - base).toBe(2); // li#x と em
+    expect(showHost(env.container.children[0])).toBe(show(q));
   });
 
   it("remove は部分木ごと外れる", () => {
     const p = n("ul", [n("li", [n("em")], "a"), n("li", [], "b")]);
     const q = n("ul", [n("li", [], "b")]);
-    const { host, binding, container } = setup(p);
-    const rel = relate(p, q, domIdentity);
-    execute(host, binding, container, rel.pairs, script(plan(rel)));
-    expect(showHost(container.children[0])).toBe("ul(li#b)");
+    const env = setup(p);
+    patchTo(env, p, q);
+    expect(showHost(env.container.children[0])).toBe("ul(li#b)");
   });
 
   it("同じ参照を旧新の両方に置いても壊れない(静的部分木の再利用)", () => {
     const shared = n("em", [], "s");
     const p = n("div", [shared, n("p", [], "x")]);
     const q = n("div", [n("p", [], "x"), shared]);
-    const { host, binding, container } = setup(p);
-    const rel = relate(p, q, domIdentity);
-    execute(host, binding, container, rel.pairs, script(plan(rel)));
-    expect(showHost(container.children[0])).toBe(show(q));
+    const env = setup(p);
+    patchTo(env, p, q);
+    expect(showHost(env.container.children[0])).toBe(show(q));
   });
 
   it("ルートの key が違うと、旧ルートを外して新ルートを新規に作る", () => {
@@ -122,27 +152,15 @@ describe("execute", () => {
   });
 
   it("container 内の管理外の要素は触らない", () => {
-    const env = fakeHost();
-    const other = {
-      label: "aside",
-      children: [],
-      parent: env.container,
-    };
-    env.container.children.push(other);
-    const binding = new WeakMap<V, object>();
-    const p = n("div"),
-      q = n("div", [n("p")]);
+    const other: FNode = { label: "aside", children: [], parent: null };
+    const p = n("div");
+    const q = n("div", [n("p")]);
+    const env = setup(p, [other]);
 
-    execute(
-      env.host,
-      binding,
-      env.container,
-      new Set(),
-      script(replace(null, p)),
-    );
-    patchTo({ ...env, binding }, p, q);
+    patchTo(env, p, q);
 
     expect(env.container.children[0]).toBe(other);
+    expect(env.container.children).toHaveLength(2);
   });
 });
 
@@ -162,6 +180,7 @@ const spec = (depth: number): fc.Arbitrary<Spec> =>
             { selector: (e) => e.key, maxLength: 5 },
           ),
   });
+
 // 呼ぶたびに新しい参照で木を作る
 const build = (s: Spec, key?: string): V =>
   n(
@@ -169,18 +188,35 @@ const build = (s: Spec, key?: string): V =>
     s.kids.map((k) => build(k.spec, k.key)),
     key,
   );
-const rootOf = (s: Spec): V => ({ ...build(s), identity: { kind: "root" } });
+// ルートは常に同じ kind / key にして、必ず対になるようにする
+const rootOf = (s: Spec): V =>
+  n(
+    "root",
+    s.kids.map((k) => build(k.spec, k.key)),
+  );
 
 describe("性質", () => {
   it("任意の旧木→新木で、ホスト上の木が新木と同形になる", () => {
     fc.assert(
       fc.property(spec(3), spec(3), (a, b) => {
-        const p = rootOf(a),
-          q = rootOf(b);
-        const { host, binding, container } = setup(p);
-        const rel = relate(p, q, domIdentity);
-        execute(host, binding, container, rel.pairs, script(plan(rel)));
-        expect(showHost(container.children[0])).toBe(show(q));
+        const p = rootOf(a);
+        const q = rootOf(b);
+        const env = setup(p);
+        patchTo(env, p, q);
+        expect(showHost(env.container.children[0])).toBe(show(q));
+      }),
+    );
+  });
+
+  it("ルートが違っても(置き換えでも)ホスト上の木が新木と同形になる", () => {
+    fc.assert(
+      fc.property(spec(3), spec(3), (a, b) => {
+        const p = build(a);
+        const q = build(b, "other");
+        const env = setup(p);
+        patchTo(env, p, q);
+        expect(env.container.children).toHaveLength(1);
+        expect(showHost(env.container.children[0])).toBe(show(q));
       }),
     );
   });
@@ -191,38 +227,38 @@ describe("性質", () => {
         fc.array(spec(2), { minLength: 2, maxLength: 5 }),
         (specs) => {
           let cur = rootOf(specs[0]);
-          const { host, binding, container } = setup(cur);
+          const env = setup(cur);
           for (const s of specs.slice(1)) {
             const next = rootOf(s);
-            const rel = relate(cur, next, domIdentity);
-            execute(host, binding, container, rel.pairs, script(plan(rel)));
+            patchTo(env, cur, next);
             cur = next;
-            expect(showHost(container.children[0])).toBe(show(cur));
+            expect(showHost(env.container.children[0])).toBe(show(cur));
           }
         },
       ),
     );
   });
 
-  it("relate の契約: pairs は一対一で、旧新の全ノードが pair か only 部分木に属する", () => {
-    const count = (v: V): number =>
-      1 + v.children.reduce((s, c) => s + count(c), 0);
+  it("relate の契約: pairs は一対一で、旧新の全ノードが pair か未対応の部分木に属する", () => {
     fc.assert(
       fc.property(spec(3), spec(3), (a, b) => {
-        const p = rootOf(a),
-          q = rootOf(b);
-        const r = relate(p, q, domIdentity);
-        expect(new Set([...r.pairs].map((x) => x.prev)).size).toBe(
-          r.pairs.size,
-        );
-        expect(new Set([...r.pairs].map((x) => x.next)).size).toBe(
-          r.pairs.size,
-        );
+        const p = rootOf(a);
+        const q = rootOf(b);
+        const r: Relation = relate(p, q);
+        const prevMatched = new Set([...r.pairs].map((x) => x.prev));
+        const nextMatched = new Set([...r.pairs].map((x) => x.next));
+
+        expect(prevMatched.size).toBe(r.pairs.size);
+        expect(nextMatched.size).toBe(r.pairs.size);
+
+        const sub = (list: V[]) => list.reduce((s, v) => s + count(v), 0);
+        expect(r.pairs.size + sub(roots(p, prevMatched))).toBe(count(p));
+        expect(r.pairs.size + sub(roots(q, nextMatched))).toBe(count(q));
       }),
     );
   });
 
-  it("移動の最小性: 同一の並びの順列でも move は (要素数 − 最長増加部分列) を超えない", () => {
+  it("移動の最小性: move は (kept の数 − 最長増加部分列) と一致する", () => {
     const lis = (xs: number[]) => {
       const t: number[] = [];
       for (const x of xs) {
@@ -248,11 +284,10 @@ describe("性質", () => {
           "ul",
           perm.map((i) => n("li", [], "k" + i)),
         );
-        const moves = script(plan(relate(p, q, domIdentity))).filter(
+        const moves = script(plan(relate(p, q))).filter(
           (o) => o.kind === "move",
         ).length;
-        const keptOrder = perm; // 新しい順に並べた旧index
-        expect(moves).toBe(keptOrder.length - lis(keptOrder));
+        expect(moves).toBe(perm.length - lis(perm));
       }),
     );
   });

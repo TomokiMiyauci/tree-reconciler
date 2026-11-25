@@ -3,31 +3,27 @@ import { relate } from "./relation.ts";
 import { plan, replace, type StructPlan } from "./plan.ts";
 import type { VNode } from "./tree.ts";
 
-interface TestIdentity {
-  name: string;
-  key?: string;
-}
-
-const identity = {
-  key(id: TestIdentity) {
-    return id.key || id.name;
-  },
-};
+const weakmap = new WeakMap<VNode, { name: string }>();
 
 function node(
   root: string,
   children: Record<string, Record<string, unknown>> = {},
-): VNode<TestIdentity> {
+): VNode {
   const [name, key] = root.split("#", 2);
-  return {
-    identity: { name, key: key === "" ? undefined : key },
+
+  const vnode = {
+    key: key || name,
     children: Object.entries(children).map(([id, child]) =>
       node(id, child as Record<string, Record<string, unknown>>),
     ),
   };
+
+  weakmap.set(vnode, { name });
+
+  return vnode;
 }
 
-const label = (v: VNode<TestIdentity>) => v.identity.name;
+const label = (v: VNode) => weakmap.get(v)!.name;
 
 // 期待値の表記: kept は "prev>next"、fresh は "+next"
 type PatchSummary = {
@@ -36,7 +32,7 @@ type PatchSummary = {
   dropped: string[]; // 順序に意味なし(ソートして比較)
 };
 
-function summarize(sp: StructPlan<TestIdentity>) {
+function summarize(sp: StructPlan) {
   if (sp.kind === "replace") {
     return {
       kind: "replace" as const,
@@ -58,8 +54,7 @@ function summarize(sp: StructPlan<TestIdentity>) {
   return { kind: "patch" as const, children };
 }
 
-const run = (prev: VNode<TestIdentity>, next: VNode<TestIdentity>) =>
-  summarize(plan(relate(prev, next, identity)));
+const run = (prev: VNode, next: VNode) => summarize(plan(relate(prev, next)));
 
 const cases = [
   {
@@ -166,8 +161,8 @@ const cases = [
   },
 ] satisfies {
   name: string;
-  prev: VNode<TestIdentity>;
-  next: VNode<TestIdentity>;
+  prev: VNode;
+  next: VNode;
   expected: ReturnType<typeof summarize>;
 }[];
 
@@ -201,15 +196,11 @@ describe("plan", () => {
       relate(
         node("A#root", { "A1#a": {}, "A2#b": {} }),
         node("B#root", { "B1#b": {}, "B2#a": {}, "B3#c": {} }),
-        identity,
       ),
     );
     if (sp.kind !== "patch") throw new Error("expected patch");
     for (const c of sp.children)
       for (const s of c.slots)
-        if (s.tag === "kept")
-          expect(identity.key(s.prev.identity)).toBe(
-            identity.key(s.next.identity),
-          );
+        if (s.tag === "kept") expect(s.prev.key).toBe(s.next.key);
   });
 });

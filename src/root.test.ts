@@ -2,7 +2,7 @@ import { describe, it, expect } from "bun:test";
 import { JSDOM } from "jsdom";
 import { createRoot } from "./root";
 import { DOMHost } from "./dom";
-import { n } from "../test/helper";
+import { n, metas } from "../test/helper";
 
 const setup = () => {
   const {
@@ -12,7 +12,8 @@ const setup = () => {
   return {
     document,
     container,
-    root: createRoot(new DOMHost(document), container),
+    // n が登録する metas を DOMHost と共有する
+    root: createRoot(new DOMHost(document, metas), container),
   };
 };
 
@@ -25,7 +26,7 @@ describe("createRoot (JSDOM)", () => {
     expect(container.innerHTML).toBe("<section><div></div></section>");
   });
 
-  it("指定の使い方: 削除・作成が混在しても結果のHTMLが一致する", () => {
+  it("削除・作成が混在しても結果のHTMLが一致する", () => {
     const { container, root } = setup();
     root.render(
       n("section", [
@@ -50,7 +51,7 @@ describe("createRoot (JSDOM)", () => {
     expect(container.innerHTML).toBe("<main><p></p><div></div></main>");
   });
 
-  it("キーなし旧 div とキーあり新 div は再利用されない(同一性定義の帰結)", () => {
+  it("キーなし旧 div とキーあり新 div は再利用されない", () => {
     const { container, root } = setup();
     root.render(n("main", [n("div")]));
     const div = container.querySelector("div");
@@ -58,11 +59,21 @@ describe("createRoot (JSDOM)", () => {
     expect(container.querySelector("div")).not.toBe(div);
   });
 
-  it("ルートの kind が変わるとマウントし直す", () => {
+  it("ルートの kind が変わると旧ルートを外して新ルートを作る", () => {
     const { container, root } = setup();
     root.render(n("div", [n("p")]));
+    const old = container.firstChild;
     root.render(n("section"));
     expect(container.innerHTML).toBe("<section></section>");
+    expect(old!.parentNode).toBeNull();
+  });
+
+  it("同じルート VNode を再度渡しても壊れない", () => {
+    const { container, root } = setup();
+    const tree = n("ul", [n("li", [], "a")]);
+    root.render(tree);
+    root.render(tree);
+    expect(container.innerHTML).toBe("<ul><li></li></ul>");
   });
 
   it("コンテナ内の他の要素には触れない", () => {
@@ -72,12 +83,34 @@ describe("createRoot (JSDOM)", () => {
     root.render(n("div"));
     root.render(n("div", [n("p")]));
     expect(container.firstChild).toBe(other);
+    expect(container.innerHTML).toBe("<aside></aside><div><p></p></div>");
   });
 
   it("unmount でマウントしたDOMだけが消える", () => {
+    const { document, container, root } = setup();
+    const other = document.createElement("aside");
+    container.appendChild(other);
+    root.render(n("div"));
+    root.unmount();
+    expect(container.innerHTML).toBe("<aside></aside>");
+  });
+
+  it("unmount 後に再度 render できる", () => {
     const { container, root } = setup();
     root.render(n("div"));
     root.unmount();
+    root.render(n("section"));
+    expect(container.innerHTML).toBe("<section></section>");
+  });
+
+  it("未マウントでの unmount は無害", () => {
+    const { container, root } = setup();
+    root.unmount();
     expect(container.innerHTML).toBe("");
+  });
+
+  it("メタ未登録の VNode は分かりやすいエラーになる", () => {
+    const { root } = setup();
+    expect(() => root.render({ key: "x", children: [] })).toThrow("no DomMeta");
   });
 });

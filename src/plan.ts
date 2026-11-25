@@ -1,44 +1,44 @@
 import type { VNode } from "./tree.ts";
 import type { Pair, Relation } from "./relation.ts";
 
-export type Slot<T> =
-  | { readonly tag: "kept"; readonly prev: VNode<T>; readonly next: VNode<T> }
-  | { readonly tag: "fresh"; readonly next: VNode<T> };
+export type Slot =
+  | { readonly tag: "kept"; readonly prev: VNode; readonly next: VNode }
+  | { readonly tag: "fresh"; readonly next: VNode };
 
-export interface ChildrenPlan<T> {
-  readonly parent: Pair<T>;
-  readonly slots: readonly Slot<T>[];
-  readonly dropped: readonly VNode<T>[];
+export interface ChildrenPlan {
+  readonly parent: Pair;
+  readonly slots: readonly Slot[];
+  readonly dropped: readonly VNode[];
 }
 
-export type StructPlan<T> =
-  | { readonly kind: "patch"; readonly children: readonly ChildrenPlan<T>[] }
+export type StructPlan =
+  | { readonly kind: "patch"; readonly children: readonly ChildrenPlan[] }
   | {
       readonly kind: "replace";
-      readonly dropped: VNode<T> | null;
-      readonly fresh: VNode<T> | null;
+      readonly dropped: VNode | null;
+      readonly fresh: VNode | null;
     };
 
-export function replace<T>(
-  dropped: VNode<T> | null,
-  fresh: VNode<T> | null,
-): StructPlan<T> {
+export function replace(
+  dropped: VNode | null,
+  fresh: VNode | null,
+): StructPlan {
   return { kind: "replace", dropped, fresh };
 }
 
-export function plan<T>(r: Relation<T>): StructPlan<T> {
+export function plan(r: Relation): StructPlan {
   if (r.pairs.size === 0) return replace(r.prev, r.next);
 
-  const prevOf = new Map<VNode<T>, VNode<T>>();
+  const prevOf = new Map<VNode, VNode>();
   for (const p of r.pairs) prevOf.set(p.next, p.prev);
 
-  const children: ChildrenPlan<T>[] = [];
+  const children: ChildrenPlan[] = [];
   for (const parent of r.pairs) {
-    const slots: Slot<T>[] = parent.next.children.map((n) => {
+    const slots: Slot[] = parent.next.children.map((n) => {
       const p = prevOf.get(n);
       return p ? { tag: "kept", prev: p, next: n } : { tag: "fresh", next: n };
     });
-    const keptPrev = new Set<VNode<T>>();
+    const keptPrev = new Set<VNode>();
     for (const s of slots) if (s.tag === "kept") keptPrev.add(s.prev);
     const dropped = parent.prev.children.filter((c) => !keptPrev.has(c));
 
@@ -50,6 +50,5 @@ export function plan<T>(r: Relation<T>): StructPlan<T> {
       );
     if (!unchanged) children.push({ parent, slots, dropped });
   }
-
   return { kind: "patch", children };
 }

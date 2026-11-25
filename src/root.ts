@@ -1,39 +1,40 @@
-import type { VNode } from "./tree.ts";
-import { relate, assignByKey, type Assign } from "./relation.ts";
-import { plan, replace } from "./plan.ts";
-import { script } from "./script.ts";
-import { execute, type Host, type Binding } from "./operation.ts";
+import type { VNode } from "./tree";
+import { relate, assignByKey, type Assign } from "./relation";
+import { plan, replace } from "./plan";
+import { script } from "./script";
+import { execute, type Host, type Binding } from "./operation";
 
-export interface Root<T> {
-  render(next: VNode<T>): void;
+export interface Root {
+  render(next: VNode): void;
   unmount(): void;
 }
 
-export function createRoot<N, T>(
-  host: Host<N, T>,
+export function createRoot<N>(
+  host: Host<N>,
   container: N,
   assign: Assign = assignByKey,
-): Root<T> {
-  const binding: Binding<N, T> = new WeakMap();
-  let current: VNode<T> | null = null;
+): Root {
+  const binding: Binding<N> = new WeakMap();
+  let current: VNode | null = null;
 
-  const apply = (next: VNode<T> | null) => {
+  const apply = (next: VNode | null) => {
     if (current && next) {
-      const relation = relate(current, next, host, assign);
+      const relation = relate(current, next, assign);
       const structPlan = plan(relation);
-      const operation = script(structPlan);
+      const structOperation = script(structPlan);
 
-      execute(host, binding, container, relation.pairs, operation);
+      execute(host, binding, container, relation.pairs, structOperation);
     } else {
-      const operation = script(replace(current, next));
-
-      execute(host, binding, container, new Set(), operation);
+      execute(
+        host,
+        binding,
+        container,
+        new Set(),
+        script(replace(current, next)),
+      );
     }
     current = next;
   };
 
-  return {
-    render: (next) => apply(next),
-    unmount: () => apply(null),
-  };
+  return { render: apply, unmount: () => apply(null) };
 }

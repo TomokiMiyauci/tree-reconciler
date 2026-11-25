@@ -1,25 +1,34 @@
 import type { VNode } from "../src/tree";
 import type { Host } from "../src/operation";
-import type { DomIdentity } from "../src/dom";
+import type { DomMeta } from "../src/dom";
 
-export type V = VNode<DomIdentity>;
+export type V = VNode;
 
-export const n = (kind: string, children: V[] = [], key?: string): V => ({
-  identity: { kind, key },
-  children,
-});
+// ---- VNode 作成(メタは WeakMap に持つ。DOMHost と同じ構造) ----
+export interface TestMeta extends DomMeta {
+  userKey?: string; // 表示用。同一性は VNode.key が担う
+}
 
-// 木の形を文字列にする(同形判定用)
-export const show = (v: V): string => {
-  const label =
-    v.identity.kind +
-    (v.identity.key !== undefined ? "#" + v.identity.key : "");
-  return v.children.length
-    ? `${label}(${v.children.map(show).join(",")})`
-    : label;
+export const metas = new WeakMap<VNode, TestMeta>();
+
+export const n = (kind: string, children: V[] = [], key?: string): V => {
+  const v: V = { key: JSON.stringify([kind, key ?? null]), children };
+  metas.set(v, { kind, userKey: key });
+  return v;
 };
 
-// メモリ上のホスト。DOMなしで操作を検証できる
+export const label = (v: V): string => {
+  const m = metas.get(v)!;
+  return m.kind + (m.userKey !== undefined ? "#" + m.userKey : "");
+};
+
+// 木の形を文字列にする(同形判定用)
+export const show = (v: V): string =>
+  v.children.length
+    ? `${label(v)}(${v.children.map(show).join(",")})`
+    : label(v);
+
+// ---- メモリ上のホスト。DOMなしで操作を検証できる ----
 export interface FNode {
   label: string;
   children: FNode[];
@@ -33,15 +42,10 @@ export const showHost = (x: FNode): string =>
 
 export function fakeHost() {
   const stats = { created: 0, inserts: 0, removes: 0 };
-  const host: Host<FNode, DomIdentity> = {
+  const host: Host<FNode> = {
     create(v) {
       stats.created++;
-      const { kind, key } = v;
-      return {
-        label: kind + (key !== undefined ? "#" + key : ""),
-        children: [],
-        parent: null,
-      };
+      return { label: label(v), children: [], parent: null };
     },
     insert(parent, node, before) {
       stats.inserts++;
@@ -58,9 +62,6 @@ export function fakeHost() {
       if (node.parent)
         node.parent.children.splice(node.parent.children.indexOf(node), 1);
       node.parent = null;
-    },
-    key(id) {
-      return `${id.kind}:${String(id.key)}`;
     },
   };
   const container: FNode = { label: "container", children: [], parent: null };

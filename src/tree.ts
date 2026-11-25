@@ -1,4 +1,4 @@
-export interface VNode<T = unknown> {
-  readonly identity: T;
-  readonly children: readonly VNode<T>[];
+export interface VNode {
+  readonly key: string;
+  readonly children: readonly VNode[];
 }

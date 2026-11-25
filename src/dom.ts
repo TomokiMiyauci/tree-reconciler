@@ -1,29 +1,29 @@
 import type { Host } from "./operation.ts";
-import type { Identity } from "./relation.ts";
+import { VNode } from "./tree.ts";
 
-export interface DomIdentity {
+export interface DomMeta {
   kind: string;
-  key?: string | number;
 }
 
-export const domIdentity: Identity<DomIdentity> = {
-  key: (a) => `${a.kind}:${String(a.key)}`,
-};
-
-export class DOMHost implements Host<Node, DomIdentity> {
+export class DOMHost implements Host<Node> {
   private doc: Document;
-  constructor(doc: Document) {
+  private map: WeakMap<VNode, DomMeta>;
+
+  constructor(doc: Document, map: WeakMap<VNode, DomMeta>) {
     this.doc = doc;
+    this.map = map;
   }
 
-  key(a: DomIdentity) {
-    return `${a.kind}:${String(a.key)}`;
-  }
+  create(v: VNode) {
+    const meta = this.map.get(v);
+    if (!meta)
+      throw new Error(
+        "VNode has no DomMeta: create it with the same map given to DOMHost",
+      );
 
-  create(v: DomIdentity) {
-    return v.kind === "#text"
+    return meta.kind === "#text"
       ? this.doc.createTextNode("")
-      : this.doc.createElement(v.kind);
+      : this.doc.createElement(meta.kind);
   }
 
   insert(parent: Node, node: Node, before: Node | null) {

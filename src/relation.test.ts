@@ -1,11 +1,8 @@
 import { describe, it, expect } from "bun:test";
-import { Identity, relate, type Relation } from "./relation.ts";
+import { relate, type Relation } from "./relation.ts";
 import { VNode } from "./tree.ts";
 
-interface TestIdentity {
-  name: string;
-  key?: string;
-}
+const weakmap = new WeakMap<VNode, { name: string }>();
 
 const cases = [
   {
@@ -334,8 +331,8 @@ const cases = [
 
 interface TestCase {
   name: string;
-  prev: VNode<TestIdentity>;
-  next: VNode<TestIdentity>;
+  prev: VNode;
+  next: VNode;
   pairs: [string, string][];
 }
 
@@ -349,29 +346,27 @@ interface NodeChildren {
   [k: string]: NodeChildren;
 }
 
-function node(root: string, children: NodeChildren): VNode<TestIdentity> {
+function node(root: string, children: NodeChildren): VNode {
   const [name, key] = root.split("#", 2);
 
-  return {
-    identity: {
-      name,
-      key: key === "" ? undefined : key,
-    },
+  const vnode = {
+    key: key || name,
     children: Object.entries(children).map(([id, child]) => node(id, child)),
-  };
+  } satisfies VNode;
+
+  weakmap.set(vnode, { name });
+
+  return vnode;
 }
 
-const identity = {
-  key(id: TestIdentity): string {
-    return id.key || id.name;
-  },
-} satisfies Identity<TestIdentity>;
-
-function pairsOf(
-  relation: Relation<TestIdentity>,
-): (readonly [string, string])[] {
+function pairsOf(relation: Relation): (readonly [string, string])[] {
   return [...relation.pairs]
-    .map(({ prev, next }) => [prev.identity.name, next.identity.name] as const)
+    .map(({ prev, next }) => {
+      if (!weakmap.get(prev)) throw new Error();
+      if (!weakmap.get(next)) throw new Error();
+
+      return [weakmap.get(prev)!.name, weakmap.get(next)!.name] as const;
+    })
     .toSorted(
       ([a1, b1], [a2, b2]) => a1.localeCompare(a2) || b1.localeCompare(b2),
     );
@@ -380,7 +375,7 @@ function pairsOf(
 describe("relate", () => {
   for (const testCase of cases) {
     it(testCase.name, () => {
-      const relation = relate(testCase.prev, testCase.next, identity);
+      const relation = relate(testCase.prev, testCase.next);
 
       expect(normalizePairs(pairsOf(relation))).toEqual(
         normalizePairs(testCase.pairs),
