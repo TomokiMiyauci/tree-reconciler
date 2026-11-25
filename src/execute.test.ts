@@ -1,11 +1,11 @@
 import { describe, it, expect } from "bun:test";
 import fc from "fast-check";
-import { relate } from "./relation";
-import { plan } from "./plan";
-import { script } from "./script";
-import { execute, mount } from "./operation";
-import { domIdentity } from "./dom";
-import { n, show, showHost, fakeHost, type V } from "../test/helper";
+import { relate, Pair } from "./relation.ts";
+import { plan, replace } from "./plan.ts";
+import { script } from "./script.ts";
+import { execute, mount } from "./operation.ts";
+import { domIdentity, DomIdentity } from "./dom.ts";
+import { n, show, showHost, fakeHost, type V } from "../test/helper.ts";
 
 function setup(prev: V) {
   const env = fakeHost();
@@ -16,22 +16,56 @@ function setup(prev: V) {
   return { ...env, binding };
 }
 
+function patchTo(
+  env: ReturnType<typeof setup>,
+  prev: V,
+  next: V,
+  tweak: (
+    pairs: ReadonlySet<Pair<DomIdentity>>,
+  ) => ReadonlySet<Pair<DomIdentity>> = (p) => p,
+) {
+  const rel = relate(prev, next, env.host);
+  execute(
+    env.host,
+    env.binding,
+    env.container,
+    tweak(rel.pairs),
+    script(plan(rel)),
+  );
+}
+
 describe("execute", () => {
   it("対応するノードは作り直さず、ホストのノードを引き継ぐ", () => {
     const p = n("ul", [n("li", [], "a"), n("li", [], "b")]);
     const q = n("ul", [n("li", [], "b"), n("li", [], "a")]);
-    const { host, binding, stats, container } = setup(p);
+    const env = setup(p);
     const before = new Map(
-      p.children.map((c) => [c.identity.key, binding.get(c)]),
+      p.children.map((c) => [c.identity.key, env.binding.get(c)]),
     );
-    const createdBefore = stats.created;
+    const created = env.stats.created;
 
-    const rel = relate(p, q, domIdentity);
-    execute(host, binding, container, rel.pairs, script(plan(rel)));
+    patchTo(env, p, q);
 
-    expect(stats.created).toBe(createdBefore);
+    expect(env.stats.created).toBe(created);
     for (const c of q.children)
-      expect(binding.get(c)).toBe(before.get(c.identity.key));
+      expect(env.binding.get(c)).toBe(before.get(c.identity.key));
+  });
+
+  it("pairs の列挙順に依存しない", () => {
+    const p = n("ul", [n("li", [], "a"), n("li", [], "b"), n("li", [], "c")]);
+    const q = n("ul", [n("li", [], "c"), n("li", [], "x"), n("li", [], "a")]);
+    const run = (reverse: boolean) => {
+      const env = setup(p);
+      patchTo(
+        env,
+        p,
+        q,
+        (pairs) => new Set(reverse ? [...pairs].reverse() : pairs),
+      );
+      return showHost(env.container.children[0]);
+    };
+    expect(run(true)).toBe(run(false));
+    expect(run(true)).toBe(show(q));
   });
 
   it("create は部分木ごとに作る", () => {
@@ -56,23 +90,6 @@ describe("execute", () => {
     expect(showHost(container.children[0])).toBe("ul(li#b)");
   });
 
-  it("pairs の列挙順に依存しない(逆順にしても同じ結果)", () => {
-    const p = n("ul", [n("li", [], "a"), n("li", [], "b"), n("li", [], "c")]);
-    const q = n("ul", [n("li", [], "c"), n("li", [], "x"), n("li", [], "a")]);
-    const run = (reverse: boolean) => {
-      const { host, binding, container } = setup(p);
-      const rel = relate(p, q, domIdentity);
-      const shuffled = {
-        ...rel,
-        pairs: new Set(reverse ? [...rel.pairs].reverse() : rel.pairs),
-      };
-      execute(host, binding, container, shuffled.pairs, script(plan(shuffled)));
-      return showHost(container.children[0]);
-    };
-    expect(run(true)).toBe(run(false));
-    expect(run(true)).toBe(show(q));
-  });
-
   it("同じ参照を旧新の両方に置いても壊れない(静的部分木の再利用)", () => {
     const shared = n("em", [], "s");
     const p = n("div", [shared, n("p", [], "x")]);
@@ -81,6 +98,51 @@ describe("execute", () => {
     const rel = relate(p, q, domIdentity);
     execute(host, binding, container, rel.pairs, script(plan(rel)));
     expect(showHost(container.children[0])).toBe(show(q));
+  });
+
+  it("ルートの key が違うと、旧ルートを外して新ルートを新規に作る", () => {
+    const p = n("div", [n("p")]);
+    const q = n("section");
+    const env = setup(p);
+    const oldRoot = env.binding.get(p);
+    const created = env.stats.created;
+
+    patchTo(env, p, q);
+
+    expect(env.container.children).toHaveLength(1);
+    expect(showHost(env.container.children[0])).toBe("section");
+    expect(env.binding.get(q)).not.toBe(oldRoot);
+    expect(env.stats.created - created).toBe(1);
+    expect(oldRoot!.parent).toBeNull();
+  });
+
+  it("初回マウントは container 直下に追加される", () => {
+    const env = setup(n("ul", [n("li", [], "a")]));
+    expect(showHost(env.container.children[0])).toBe("ul(li#a)");
+  });
+
+  it("container 内の管理外の要素は触らない", () => {
+    const env = fakeHost();
+    const other = {
+      label: "aside",
+      children: [],
+      parent: env.container,
+    };
+    env.container.children.push(other);
+    const binding = new WeakMap<V, object>();
+    const p = n("div"),
+      q = n("div", [n("p")]);
+
+    execute(
+      env.host,
+      binding,
+      env.container,
+      new Set(),
+      script(replace(null, p)),
+    );
+    patchTo({ ...env, binding }, p, q);
+
+    expect(env.container.children[0]).toBe(other);
   });
 });
 
