@@ -1,7 +1,7 @@
 import type { Branch } from "./tree.ts";
 import { relate } from "./relation.ts";
 import { script } from "./script.ts";
-import { execute, type Host, type Binding } from "./operation.ts";
+import { execute, type Host } from "./operation.ts";
 import { rootOperations } from "./util.ts";
 
 export interface Root {
@@ -9,8 +9,7 @@ export interface Root {
   unmount(): void;
 }
 
-export function createRoot<N>(host: Host<N>, container: N): Root {
-  const binding: Binding<N> = new WeakMap();
+export function createRoot(host: Host): Root {
   let current: Branch | null = null;
 
   const apply = (next: Branch | null) => {
@@ -18,15 +17,14 @@ export function createRoot<N>(host: Host<N>, container: N): Root {
       const matching = relate(current, next);
       const operations = script(matching, current, next);
 
-      execute(host, binding, container, matching, operations, {});
+      execute(host, matching, operations);
     } else if (current || next) {
-      // 初回(removed なし)または unmount(added なし)
       const operations = rootOperations({ prev: current, next });
 
-      execute(host, binding, container, null, operations, {});
+      execute(host, null, operations);
     }
 
-    current = next; // execute が成功した後にだけ更新する
+    current = next;
   };
 
   return { render: apply, unmount: () => apply(null) };

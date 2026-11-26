@@ -14,7 +14,7 @@ const setup = () => {
     document,
     container,
     // n が登録する metas を DOMHost と共有する
-    root: createRoot(new DOMHost(document, metas), container),
+    root: createRoot(new DOMHost(document, container, metas)),
   };
 };
 
