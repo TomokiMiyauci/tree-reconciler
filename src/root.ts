@@ -1,6 +1,5 @@
 import type { Branch } from "./tree.ts";
 import { relate } from "./relation.ts";
-import { plan } from "./plan.ts";
 import { script, scriptRoot } from "./script.ts";
 import { execute, type Host, type Binding } from "./operation.ts";
 
@@ -16,31 +15,16 @@ export function createRoot<N>(host: Host<N>, container: N): Root {
   const apply = (next: Branch | null) => {
     if (current && next) {
       const matching = relate(current, next);
+      const operations = script(matching, current, next);
 
-      if (matching) {
-        execute(host, binding, container, matching, script(plan(matching)), {});
-      } else {
-        // ルートが対にならない: 旧を外して新を作る
-        execute(
-          host,
-          binding,
-          container,
-          null,
-          scriptRoot({ removed: current, added: next }),
-          {},
-        );
-      }
+      execute(host, binding, container, matching, operations, {});
     } else if (current || next) {
       // 初回(removed なし)または unmount(added なし)
-      execute(
-        host,
-        binding,
-        container,
-        null,
-        scriptRoot({ removed: current, added: next }),
-        {},
-      );
+      const operations = scriptRoot({ removed: current, added: next });
+
+      execute(host, binding, container, null, operations, {});
     }
+
     current = next; // execute が成功した後にだけ更新する
   };
 

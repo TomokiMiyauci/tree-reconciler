@@ -1,7 +1,6 @@
 import { describe, it, expect } from "bun:test";
 import fc from "fast-check";
 import { relate, type Counterparts } from "../src/relation.ts";
-import { plan } from "../src/plan.ts";
 import { script, scriptRoot } from "../src/script.ts";
 import { execute, type Binding, type Observer } from "../src/operation.ts";
 import {
@@ -52,7 +51,7 @@ function patchTo(
       env.binding,
       env.container,
       tweak(counterparts),
-      script(plan(counterparts)),
+      script(counterparts, prev, next),
       env.observer,
     );
   } else {
@@ -453,7 +452,7 @@ describe("性質", () => {
           "ul",
           perm.map((index) => n("li", [], "k" + index)),
         );
-        const moves = script(plan(relate(prev, next)!)).filter(
+        const moves = script(relate(prev, next)!, prev, next).filter(
           (op) => op.kind === "move",
         ).length;
         expect(moves).toBe(perm.length - lis(perm));

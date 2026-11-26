@@ -1,21 +1,66 @@
 import type { Branch } from "./tree.ts";
-import type { ChildrenPlan } from "./plan.ts";
+import type { Counterparts } from "./relation.ts";
+import { plan, type ChildrenPlan } from "./plan.ts";
 
+/**
+ * Identifies a position relative to a parent branch.
+ */
 export type Anchor = {
+  /** The parent branch, or `null` for the tree root. */
   readonly parent: Branch | null;
+  /** The branch to insert before, or `null` to append. */
   readonly before: Branch | null;
 };
 
+/**
+ * Describes a structural operation on a tree.
+ */
 export type StructOp =
   | { readonly kind: "create"; readonly node: Branch; readonly at: Anchor }
   | { readonly kind: "move"; readonly node: Branch; readonly to: Anchor }
   | { readonly kind: "remove"; readonly node: Branch };
 
+/**
+ * Describes a change to the tree root.
+ */
 export type RootChange = {
+  /** The previous root to remove, or `null` if absent. */
   readonly removed: Branch | null;
+  /** The next root to create, or `null` if absent. */
   readonly added: Branch | null;
 };
 
+/**
+ * Generates structural operations to transform the previous tree into the next tree.
+ *
+ * If the roots have no correspondence, the previous root is removed and the next
+ * root is created. Otherwise, operations are generated for changed child arrangements.
+ *
+ * @param counterparts The correspondence between branches in the next and previous trees.
+ * @param prevRoot The root of the previous tree.
+ * @param nextRoot The root of the next tree.
+ * @returns The structural operations required to produce the next tree.
+ */
+export function script(
+  counterparts: Counterparts | null,
+  prevRoot: Branch,
+  nextRoot: Branch,
+): StructOp[] {
+  if (counterparts === null) {
+    return scriptRoot({ removed: prevRoot, added: nextRoot });
+  }
+
+  const plans = plan(counterparts);
+
+  return scriptChildren(plans);
+}
+
+/**
+ * Generates structural operations for a change to the tree root.
+ *
+ * @param change The previous and next roots.
+ * @returns The operations required to replace the root.
+ */
 export function scriptRoot(change: RootChange): StructOp[] {
   const ops: StructOp[] = [];
 
@@ -32,17 +77,30 @@ export function scriptRoot(change: RootChange): StructOp[] {
   return ops;
 }
 
-// 契約: 1つの親に対する操作列は、先頭から順に実行されて初めて意味を持つ。
-//       親が異なる操作同士は独立で、並べ替えてよい。
-export function script(plans: readonly ChildrenPlan[]): StructOp[] {
+/**
+ * Generates structural operations for a collection of child plans.
+ *
+ * Operations for each parent must be executed in their generated order.
+ * Operations belonging to different parents are independent and may be reordered.
+ *
+ * @param plans The plans describing the target child arrangements.
+ * @returns The structural operations required to produce those arrangements.
+ */
+function scriptChildren(plans: readonly ChildrenPlan[]): StructOp[] {
   const ops: StructOp[] = [];
 
-  for (const childrenPlan of plans) scriptChildren(childrenPlan, ops);
+  for (const childrenPlan of plans) scriptChildrenPlan(childrenPlan, ops);
 
   return ops;
 }
 
-function scriptChildren(
+/**
+ * Generates structural operations for a single parent's child arrangement.
+ *
+ * @param plan The plan describing the target child arrangement.
+ * @param ops The operation list to append to.
+ */
+function scriptChildrenPlan(
   { prevParent, nextParent, arrangement }: ChildrenPlan,
   ops: StructOp[],
 ): void {
@@ -63,7 +121,7 @@ function scriptChildren(
 
   const stable = stableSet(sequence);
 
-  // 後ろから。次の兄弟が配置済みのアンカー
+  // Process from right to left, using the next sibling as the anchor.
   for (let index = arrangement.length - 1; index >= 0; index--) {
     const placement = arrangement[index];
     const anchor: Anchor = {
@@ -79,13 +137,19 @@ function scriptChildren(
   }
 }
 
-// 最長増加部分列に含まれる位置を 1 にする(全部 0 でも結果は正しい)
-function stableSet(sequence: number[]): Uint8Array {
+/**
+ * Finds the positions belonging to a longest increasing subsequence.
+ *
+ * @param sequence The previous indices in target order. Negative values represent unmatched branches.
+ * @returns A bitmap marking the positions belonging to a longest increasing subsequence.
+ */
+function stableSet(sequence: readonly number[]): Uint8Array {
   const tails: number[] = [];
   const back = new Int32Array(sequence.length).fill(-1);
 
   for (let index = 0; index < sequence.length; index++) {
     if (sequence[index] < 0) continue;
+
     let low = 0;
     let high = tails.length;
 
@@ -112,6 +176,9 @@ function stableSet(sequence: number[]): Uint8Array {
   return marks;
 }
 
+/**
+ * Creates a tuple from two values.
+ */
 function pair<T, U>(a: T, b: U): [T, U] {
   return [a, b];
 }
