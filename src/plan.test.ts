@@ -13,7 +13,6 @@ function summarize(plans: readonly ChildrenPlan[]) {
           ? `${label(placement.prev)}>${label(placement.next)}`
           : `+${label(placement.next)}`,
       ),
-      removed: childrenPlan.removed.map(label).sort(),
     }))
     .sort((a, b) => a.parent.localeCompare(b.parent));
 }
@@ -31,26 +30,25 @@ describe("plan", () => {
       {
         parent: "ul>ul",
         arrangement: ["li#b>li#b", "li#a>li#a"],
-        removed: [],
       },
     ]);
   });
 
   it("marks a child without a counterpart as added", () => {
     expect(run(items("a"), items("a", "x"))).toEqual([
-      { parent: "ul>ul", arrangement: ["li#a>li#a", "+li#x"], removed: [] },
+      { parent: "ul>ul", arrangement: ["li#a>li#a", "+li#x"] },
     ]);
   });
 
   it("lists previous children missing from the target as removed", () => {
     expect(run(items("a", "b"), items("a"))).toEqual([
-      { parent: "ul>ul", arrangement: ["li#a>li#a"], removed: ["li#b"] },
+      { parent: "ul>ul", arrangement: ["li#a>li#a"] },
     ]);
   });
 
   it("reports added and removed together when a child is replaced", () => {
     expect(run(items("old"), items("new"))).toEqual([
-      { parent: "ul>ul", arrangement: ["+li#new"], removed: ["li#old"] },
+      { parent: "ul>ul", arrangement: ["+li#new"] },
     ]);
   });
 
@@ -71,8 +69,8 @@ describe("plan", () => {
     const prev = n("div", [n("p", [n("em")], "p"), n("q", [], "q")]);
     const next = n("div", [n("p", [], "p"), n("q", [n("em")], "q")]);
     expect(run(prev, next)).toEqual([
-      { parent: "p#p>p#p", arrangement: [], removed: ["em"] },
-      { parent: "q#q>q#q", arrangement: ["+em"], removed: [] },
+      { parent: "p#p>p#p", arrangement: [] },
+      { parent: "q#q>q#q", arrangement: ["+em"] },
     ]);
   });
 
@@ -81,7 +79,6 @@ describe("plan", () => {
       {
         parent: "ul>ul",
         arrangement: ["li#a>li#a", "li#a>li#a"],
-        removed: ["li#a"],
       },
     ]);
   });

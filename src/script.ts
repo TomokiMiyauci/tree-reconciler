@@ -43,18 +43,25 @@ export function script(plans: readonly ChildrenPlan[]): StructOp[] {
 }
 
 function scriptChildren(
-  { prevParent, nextParent, arrangement, removed }: ChildrenPlan,
+  { prevParent, nextParent, arrangement }: ChildrenPlan,
   ops: StructOp[],
 ): void {
-  for (const node of removed) ops.push({ kind: "remove", node });
+  const prevIndex = new Map<Branch, number>(prevParent.children.map(pair));
 
-  const prevIndex = new Map<Branch, number>();
-  prevParent.children.forEach((child, index) => prevIndex.set(child, index));
-  const stable = stableSet(
-    arrangement.map((placement) =>
-      placement.tag === "matched" ? prevIndex.get(placement.prev)! : -1,
-    ),
-  );
+  const sequence = arrangement.map((placement) => {
+    if (placement.tag === "unmatched") return -1;
+
+    const index = prevIndex.get(placement.prev)!;
+    prevIndex.delete(placement.prev);
+
+    return index;
+  });
+
+  for (const node of prevIndex.keys()) {
+    ops.push({ kind: "remove", node });
+  }
+
+  const stable = stableSet(sequence);
 
   // 後ろから。次の兄弟が配置済みのアンカー
   for (let index = arrangement.length - 1; index >= 0; index--) {
@@ -63,6 +70,7 @@ function scriptChildren(
       parent: nextParent,
       before: arrangement[index + 1]?.next ?? null,
     };
+
     if (placement.tag === "unmatched") {
       ops.push({ kind: "create", node: placement.next, at: anchor });
     } else if (!stable[index]) {
@@ -102,4 +110,8 @@ function stableSet(sequence: number[]): Uint8Array {
   }
 
   return marks;
+}
+
+function pair<T, U>(a: T, b: U): [T, U] {
+  return [a, b];
 }
