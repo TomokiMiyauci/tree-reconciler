@@ -63,7 +63,7 @@ function scriptChildren(
       parent: nextParent,
       before: arrangement[index + 1]?.next ?? null,
     };
-    if (placement.tag === "added") {
+    if (placement.tag === "unmatched") {
       ops.push({ kind: "create", node: placement.next, at: anchor });
     } else if (!stable[index]) {
       ops.push({ kind: "move", node: placement.next, to: anchor });

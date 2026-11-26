@@ -4,7 +4,7 @@ import type { Counterparts } from "./relation.ts";
 // 目標の並びの1要素。旧に対応があれば matched、なければ added
 export type Placement =
   | { readonly tag: "matched"; readonly prev: Branch; readonly next: Branch }
-  | { readonly tag: "added"; readonly next: Branch };
+  | { readonly tag: "unmatched"; readonly next: Branch };
 
 export interface ChildrenPlan {
   readonly prevParent: Branch;
@@ -19,7 +19,7 @@ export function plan(counterparts: Counterparts): ChildrenPlan[] {
   for (const [nextParent, prevParent] of counterparts) {
     const arrangement: Placement[] = nextParent.children.map((next) => {
       const prev = counterparts.get(next);
-      return prev ? { tag: "matched", prev, next } : { tag: "added", next };
+      return prev ? { tag: "matched", prev, next } : { tag: "unmatched", next };
     });
 
     const keptPrev = new Set<Branch>();
