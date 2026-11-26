@@ -6,6 +6,8 @@
     "noImplicitReturns": true,
     "noImplicitOverride": true,
     "noImplicitThis": true,
-    "types": ["bun"]
+    "types": ["bun"],
+    "noUnusedLocals": true,
+    "verbatimModuleSyntax": true
   }
 }
