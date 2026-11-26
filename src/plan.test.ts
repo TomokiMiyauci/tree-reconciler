@@ -3,7 +3,7 @@ import { relate } from "./relation.ts";
 import { plan, type ChildrenPlan } from "./plan.ts";
 import { n, label, type V } from "../test/helper.ts";
 
-// 期待値の表記: matched は "prev>next"、added は "+next"
+// 期待値の表記: matched は "prev>next"、unmatched は "+next"
 function summarize(plans: readonly ChildrenPlan[]) {
   return plans
     .map((childrenPlan) => ({
@@ -18,6 +18,7 @@ function summarize(plans: readonly ChildrenPlan[]) {
 }
 
 const run = (prev: V, next: V) => summarize(plan(relate(prev, next)!));
+
 const items = (...keys: string[]) =>
   n(
     "ul",
@@ -34,21 +35,27 @@ describe("plan", () => {
     ]);
   });
 
-  it("marks a child without a counterpart as added", () => {
+  it("marks a child without a counterpart as unmatched", () => {
     expect(run(items("a"), items("a", "x"))).toEqual([
       { parent: "ul>ul", arrangement: ["li#a>li#a", "+li#x"] },
     ]);
   });
 
-  it("lists previous children missing from the target as removed", () => {
+  it("plans a parent when previous children are absent from the target", () => {
     expect(run(items("a", "b"), items("a"))).toEqual([
-      { parent: "ul>ul", arrangement: ["li#a>li#a"] },
+      {
+        parent: "ul>ul",
+        arrangement: ["li#a>li#a"],
+      },
     ]);
   });
 
-  it("reports added and removed together when a child is replaced", () => {
+  it("plans added and missing children together when a child is replaced", () => {
     expect(run(items("old"), items("new"))).toEqual([
-      { parent: "ul>ul", arrangement: ["+li#new"] },
+      {
+        parent: "ul>ul",
+        arrangement: ["+li#new"],
+      },
     ]);
   });
 
@@ -62,19 +69,21 @@ describe("plan", () => {
       n("ul", [n("li", [], "a"), n("li", [], "b")], "u"),
       n("p", [], "q"),
     ]);
+
     expect(run(prev, next).map((entry) => entry.parent)).toEqual(["ul#u>ul#u"]);
   });
 
   it("does not carry a child over to a different parent", () => {
     const prev = n("div", [n("p", [n("em")], "p"), n("q", [], "q")]);
     const next = n("div", [n("p", [], "p"), n("q", [n("em")], "q")]);
+
     expect(run(prev, next)).toEqual([
       { parent: "p#p>p#p", arrangement: [] },
       { parent: "q#q>q#q", arrangement: ["+em"] },
     ]);
   });
 
-  it("assigns same-key siblings in order and removes the extra", () => {
+  it("matches same-key siblings in order and omits excess previous siblings", () => {
     expect(run(items("a", "a", "a"), items("a", "a"))).toEqual([
       {
         parent: "ul>ul",
