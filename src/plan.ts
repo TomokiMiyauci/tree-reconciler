@@ -22,10 +22,10 @@ export function plan(counterparts: Counterparts): ChildrenPlan[] {
       return prev ? { tag: "matched", prev, next } : { tag: "unmatched", next };
     });
 
-    const keptPrev = new Set<Branch>();
-    for (const placement of arrangement) {
-      if (placement.tag === "matched") keptPrev.add(placement.prev);
-    }
+    const keptPrev: ReadonlySet<Branch> = arrangement.reduce(
+      matchedReducer,
+      new Set(),
+    );
     const removed = prevParent.children.filter((child) => !keptPrev.has(child));
 
     const unchanged =
@@ -41,4 +41,10 @@ export function plan(counterparts: Counterparts): ChildrenPlan[] {
     }
   }
   return plans;
+}
+
+function matchedReducer(set: Set<Branch>, placement: Placement): Set<Branch> {
+  if (placement.tag === "matched") set.add(placement.prev);
+
+  return set;
 }
