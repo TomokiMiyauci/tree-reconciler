@@ -1,19 +1,19 @@
-import type { VNode } from "../src/tree";
+import { Branch } from "../src/tree";
 import type { Host } from "../src/operation";
 import type { DomMeta } from "../src/dom";
 import type { Observer } from "../src/operation.ts";
 
-export type V = VNode;
+export type V = Branch;
 
 // ---- VNode 作成(メタは WeakMap に持つ。DOMHost と同じ構造) ----
 export interface TestMeta extends DomMeta {
   userKey?: string; // 表示用。同一性は VNode.key が担う
 }
 
-export const metas = new WeakMap<VNode, TestMeta>();
+export const metas = new WeakMap<Branch, TestMeta>();
 
 export const n = (kind: string, children: V[] = [], key?: string): V => {
-  const v: V = { key: JSON.stringify([kind, key ?? null]), children };
+  const v: V = Branch.of(JSON.stringify([kind, key ?? null]), children);
   metas.set(v, { kind, userKey: key });
   return v;
 };

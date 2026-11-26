@@ -1,17 +1,9 @@
-import type { VNode } from "./tree.ts";
-
-/**
- * A correspondence between nodes in the previous and next trees.
- */
-export interface Pair {
-  readonly prev: VNode;
-  readonly next: VNode;
-}
+import type { Branch } from "./tree.ts";
 
 /**
  * Map for Next to Prev
  */
-export type Counterparts = ReadonlyMap<VNode, VNode>;
+export type Counterparts = ReadonlyMap<Branch, Branch>;
 
 /**
  * Pairs equivalent siblings in their occurrence order.
@@ -20,10 +12,10 @@ export type Counterparts = ReadonlyMap<VNode, VNode>;
  * unused node having the same key in the previous siblings.
  */
 function pairSiblings(
-  prevChildren: readonly VNode[],
-  nextChildren: readonly VNode[],
-): [next: VNode, prev: VNode][] {
-  const queues = new Map<string, VNode[]>();
+  prevChildren: readonly Branch[],
+  nextChildren: readonly Branch[],
+): [next: Branch, prev: Branch][] {
+  const queues = new Map<string, Branch[]>();
 
   for (const child of prevChildren) {
     const queue = queues.get(child.key);
@@ -34,7 +26,7 @@ function pairSiblings(
 
   const cursors = new Map<string, number>();
 
-  const pairs: [VNode, VNode][] = [];
+  const pairs: [Branch, Branch][] = [];
 
   for (const next of nextChildren) {
     const queue = queues.get(next.key);
@@ -58,11 +50,14 @@ function pairSiblings(
  * For each paired parent, its children are paired by key and
  * occurrence order. Descendants of unpaired nodes are not traversed.
  */
-export function relate(prevRoot: VNode, nextRoot: VNode): Counterparts | null {
+export function relate(
+  prevRoot: Branch,
+  nextRoot: Branch,
+): Counterparts | null {
   if (prevRoot.key !== nextRoot.key) return null;
 
-  const counterparts = new Map<VNode, VNode>([[nextRoot, prevRoot]]);
-  const stack: [next: VNode, prev: VNode][] = [[nextRoot, prevRoot]];
+  const counterparts = new Map<Branch, Branch>([[nextRoot, prevRoot]]);
+  const stack: [next: Branch, prev: Branch][] = [[nextRoot, prevRoot]];
 
   while (stack.length) {
     const [next, prev] = stack.pop()!;

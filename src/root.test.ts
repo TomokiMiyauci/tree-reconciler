@@ -3,6 +3,7 @@ import { JSDOM } from "jsdom";
 import { createRoot } from "./root";
 import { DOMHost } from "./dom";
 import { n, metas } from "../test/helper";
+import { Branch } from "./tree";
 
 const setup = () => {
   const {
@@ -111,6 +112,6 @@ describe("createRoot (JSDOM)", () => {
 
   it("メタ未登録の VNode は分かりやすいエラーになる", () => {
     const { root } = setup();
-    expect(() => root.render({ key: "x", children: [] })).toThrow("no DomMeta");
+    expect(() => root.render(Branch.of("x"))).toThrow("no DomMeta");
   });
 });

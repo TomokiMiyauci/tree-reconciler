@@ -1,5 +1,5 @@
 import type { Host } from "./operation.ts";
-import { VNode } from "./tree.ts";
+import { Branch } from "./tree.ts";
 
 export interface DomMeta {
   kind: string;
@@ -7,14 +7,14 @@ export interface DomMeta {
 
 export class DOMHost implements Host<Node> {
   private doc: Document;
-  private map: WeakMap<VNode, DomMeta>;
+  private map: WeakMap<Branch, DomMeta>;
 
-  constructor(doc: Document, map: WeakMap<VNode, DomMeta>) {
+  constructor(doc: Document, map: WeakMap<Branch, DomMeta>) {
     this.doc = doc;
     this.map = map;
   }
 
-  create(v: VNode) {
+  create(v: Branch) {
     const meta = this.map.get(v);
     if (!meta)
       throw new Error(

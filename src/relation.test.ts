@@ -1,22 +1,22 @@
 import { describe, it, expect } from "bun:test";
 import { relate, type Counterparts } from "./relation.ts";
-import type { VNode } from "./tree.ts";
+import { Branch } from "./tree.ts";
 
-const names = new WeakMap<VNode, string>();
+const names = new WeakMap<Branch, string>();
 
 interface NodeChildren {
   [label: string]: NodeChildren;
 }
 
 // "A1#item": ラベルが A1、key が item。"#" がなければ key はラベル
-function node(spec: string, children: NodeChildren = {}): VNode {
+function node(spec: string, children: NodeChildren = {}): Branch {
   const [name, key] = spec.split("#", 2);
-  const vnode: VNode = {
-    key: key || name,
-    children: Object.entries(children).map(([childSpec, grandChildren]) =>
+  const vnode: Branch = Branch.of(
+    key || name,
+    Object.entries(children).map(([childSpec, grandChildren]) =>
       node(childSpec, grandChildren),
     ),
-  };
+  );
   names.set(vnode, name);
   return vnode;
 }
@@ -143,8 +143,8 @@ describe("relate", () => {
     const shared = node("S#s");
     const prev = node("A#root");
     const next = node("B#root");
-    (prev.children as VNode[]).push(shared);
-    (next.children as VNode[]).push(shared);
+    (prev.children as Branch[]).push(shared);
+    (next.children as Branch[]).push(shared);
 
     const counterparts = relate(prev, next)!;
     expect(counterparts.get(shared)).toBe(shared);

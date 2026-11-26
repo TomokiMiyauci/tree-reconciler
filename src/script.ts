@@ -1,19 +1,19 @@
-import type { VNode } from "./tree.ts";
+import type { Branch } from "./tree.ts";
 import type { ChildrenPlan } from "./plan.ts";
 
 export type Anchor = {
-  readonly parent: VNode | null;
-  readonly before: VNode | null;
+  readonly parent: Branch | null;
+  readonly before: Branch | null;
 };
 
 export type StructOp =
-  | { readonly kind: "create"; readonly node: VNode; readonly at: Anchor }
-  | { readonly kind: "move"; readonly node: VNode; readonly to: Anchor }
-  | { readonly kind: "remove"; readonly node: VNode };
+  | { readonly kind: "create"; readonly node: Branch; readonly at: Anchor }
+  | { readonly kind: "move"; readonly node: Branch; readonly to: Anchor }
+  | { readonly kind: "remove"; readonly node: Branch };
 
 export type RootChange = {
-  readonly removed: VNode | null;
-  readonly added: VNode | null;
+  readonly removed: Branch | null;
+  readonly added: Branch | null;
 };
 
 export function scriptRoot(change: RootChange): StructOp[] {
@@ -48,7 +48,7 @@ function scriptChildren(
 ): void {
   for (const node of removed) ops.push({ kind: "remove", node });
 
-  const prevIndex = new Map<VNode, number>();
+  const prevIndex = new Map<Branch, number>();
   prevParent.children.forEach((child, index) => prevIndex.set(child, index));
   const stable = stableSet(
     arrangement.map((placement) =>

@@ -1,28 +1,28 @@
-import type { VNode } from "./tree.ts";
+import type { Branch } from "./tree.ts";
 import type { Counterparts } from "./relation.ts";
 import type { Anchor, StructOp } from "./script.ts";
 
 export interface Host<N> {
   // この VNode に対応する実体を供給する(既存ノードを返してもよい)。
   // 参照以外(key, children)は見ない契約。メタは利用者側のテーブルで引く。
-  create(vnode: VNode): N;
+  create(vnode: Branch): N;
   insert(parent: N, node: N, before: N | null): void; // 既存なら move
   remove(node: N): void;
 }
 
-export type Binding<N> = WeakMap<VNode, N>;
+export type Binding<N> = WeakMap<Branch, N>;
 
 export interface Observer<N> {
-  created?(vnode: VNode, hostNode: N): void; // 新規ノード。親へ挿入する前
-  matched?(prev: VNode, next: VNode, hostNode: N): void; // 旧と新が対になった
-  removed?(vnode: VNode, hostNode: N): void; // 取り除く。ホストから外す前
+  created?(vnode: Branch, hostNode: N): void; // 新規ノード。親へ挿入する前
+  matched?(prev: Branch, next: Branch, hostNode: N): void; // 旧と新が対になった
+  removed?(vnode: Branch, hostNode: N): void; // 取り除く。ホストから外す前
 }
 
 function mount<N>(
   host: Host<N>,
   binding: Binding<N>,
   observer: Observer<N>,
-  vnode: VNode,
+  vnode: Branch,
 ): N {
   const hostNode = host.create(vnode);
   binding.set(vnode, hostNode);
@@ -37,8 +37,8 @@ function mount<N>(
 
 function collect<N>(
   binding: Binding<N>,
-  vnode: VNode,
-  into: [VNode, N][],
+  vnode: Branch,
+  into: [Branch, N][],
 ): void {
   into.push([vnode, binding.get(vnode)!]);
   for (const child of vnode.children) collect(binding, child, into);
@@ -53,17 +53,17 @@ export function execute<N>(
   ops: readonly StructOp[],
   observer: Observer<N>,
 ): void {
-  const resolve = (vnode: VNode) => binding.get(vnode)!;
+  const resolve = (vnode: Branch) => binding.get(vnode)!;
   const parentOf = (anchor: Anchor) =>
     anchor.parent ? resolve(anchor.parent) : container;
   const beforeOf = (anchor: Anchor) =>
     anchor.before ? resolve(anchor.before) : null;
 
   // 旧側を指す remove の対象は、引き継ぎで binding が書き換わる前に解決する
-  const doomed = new Map<VNode, [VNode, N][]>();
+  const doomed = new Map<Branch, [Branch, N][]>();
   for (const op of ops) {
     if (op.kind === "remove") {
-      const entries: [VNode, N][] = [];
+      const entries: [Branch, N][] = [];
       collect(binding, op.node, entries);
       doomed.set(op.node, entries);
     }

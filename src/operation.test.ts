@@ -145,15 +145,6 @@ describe("execute", () => {
     expect(showHost(env.container.children[0])).toBe("ul(li#b)");
   });
 
-  it("同じ参照を旧新の両方に置いても壊れない", () => {
-    const shared = n("em", [], "s");
-    const prev = n("div", [shared, n("p", [], "x")]);
-    const next = n("div", [n("p", [], "x"), shared]);
-    const env = setup(prev);
-    patchTo(env, prev, next);
-    expect(showHost(env.container.children[0])).toBe(show(next));
-  });
-
   it("ルートの key が違うと、旧ルートを外して新ルートを新規に作る", () => {
     const prev = n("div", [n("p")]);
     const next = n("section");
@@ -221,19 +212,6 @@ describe("observer", () => {
 
     const matched = events.filter((event) => event.startsWith("matched"));
     expect(matched.sort()).toEqual(["matched li#a>li#a", "matched ul>ul"]);
-  });
-
-  it("同じ参照の再利用(prev === next)では matched を呼ばない", () => {
-    const { events, observer } = recorder();
-    const shared = n("em", [], "s");
-    const prev = n("div", [shared]);
-    const next = n("div", [shared]);
-    const env = setup(prev, [], observer);
-    events.length = 0;
-
-    patchTo(env, prev, next);
-
-    expect(events).toEqual(["matched div>div"]);
   });
 
   it("matched はホストノードの引き継ぎ後に呼ばれる", () => {

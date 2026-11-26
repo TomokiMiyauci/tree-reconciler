@@ -1,16 +1,16 @@
-import type { VNode } from "./tree.ts";
+import type { Branch } from "./tree.ts";
 import type { Counterparts } from "./relation.ts";
 
 // 目標の並びの1要素。旧に対応があれば matched、なければ added
 export type Placement =
-  | { readonly tag: "matched"; readonly prev: VNode; readonly next: VNode }
-  | { readonly tag: "added"; readonly next: VNode };
+  | { readonly tag: "matched"; readonly prev: Branch; readonly next: Branch }
+  | { readonly tag: "added"; readonly next: Branch };
 
 export interface ChildrenPlan {
-  readonly prevParent: VNode;
-  readonly nextParent: VNode;
+  readonly prevParent: Branch;
+  readonly nextParent: Branch;
   readonly arrangement: readonly Placement[]; // 目標の並び(順序に意味がある)
-  readonly removed: readonly VNode[]; // 目標の並びに現れない旧の子(導出値)
+  readonly removed: readonly Branch[]; // 目標の並びに現れない旧の子(導出値)
 }
 
 export function plan(counterparts: Counterparts): ChildrenPlan[] {
@@ -22,7 +22,7 @@ export function plan(counterparts: Counterparts): ChildrenPlan[] {
       return prev ? { tag: "matched", prev, next } : { tag: "added", next };
     });
 
-    const keptPrev = new Set<VNode>();
+    const keptPrev = new Set<Branch>();
     for (const placement of arrangement) {
       if (placement.tag === "matched") keptPrev.add(placement.prev);
     }

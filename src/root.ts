@@ -1,19 +1,19 @@
-import type { VNode } from "./tree.ts";
+import type { Branch } from "./tree.ts";
 import { relate } from "./relation.ts";
 import { plan } from "./plan.ts";
 import { script, scriptRoot } from "./script.ts";
 import { execute, type Host, type Binding } from "./operation.ts";
 
 export interface Root {
-  render(next: VNode): void;
+  render(next: Branch): void;
   unmount(): void;
 }
 
 export function createRoot<N>(host: Host<N>, container: N): Root {
   const binding: Binding<N> = new WeakMap();
-  let current: VNode | null = null;
+  let current: Branch | null = null;
 
-  const apply = (next: VNode | null) => {
+  const apply = (next: Branch | null) => {
     if (current && next) {
       const matching = relate(current, next);
 
