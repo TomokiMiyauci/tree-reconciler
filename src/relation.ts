@@ -8,7 +8,9 @@ export interface Pair {
   readonly next: VNode;
 }
 
-// 新ノード → 対応する旧ノード。
+/**
+ * Map for Next to Prev
+ */
 export type Counterparts = ReadonlyMap<VNode, VNode>;
 
 /**
@@ -22,19 +24,27 @@ function pairSiblings(
   nextChildren: readonly VNode[],
 ): [next: VNode, prev: VNode][] {
   const queues = new Map<string, VNode[]>();
+
   for (const child of prevChildren) {
     const queue = queues.get(child.key);
+
     if (queue) queue.push(child);
     else queues.set(child.key, [child]);
   }
+
   const cursors = new Map<string, number>();
 
   const pairs: [VNode, VNode][] = [];
+
   for (const next of nextChildren) {
     const queue = queues.get(next.key);
+
     if (!queue) continue;
+
     const cursor = cursors.get(next.key) ?? 0;
+
     if (cursor >= queue.length) continue;
+
     cursors.set(next.key, cursor + 1);
     pairs.push([next, queue[cursor]]);
   }
@@ -61,5 +71,6 @@ export function relate(prevRoot: VNode, nextRoot: VNode): Counterparts | null {
       stack.push(pair);
     }
   }
+
   return counterparts;
 }

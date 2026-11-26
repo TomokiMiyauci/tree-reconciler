@@ -18,7 +18,9 @@ export type RootChange = {
 
 export function scriptRoot(change: RootChange): StructOp[] {
   const ops: StructOp[] = [];
+
   if (change.removed) ops.push({ kind: "remove", node: change.removed });
+
   if (change.added) {
     ops.push({
       kind: "create",
@@ -26,6 +28,7 @@ export function scriptRoot(change: RootChange): StructOp[] {
       at: { parent: null, before: null },
     });
   }
+
   return ops;
 }
 
@@ -33,7 +36,9 @@ export function scriptRoot(change: RootChange): StructOp[] {
 //       親が異なる操作同士は独立で、並べ替えてよい。
 export function script(plans: readonly ChildrenPlan[]): StructOp[] {
   const ops: StructOp[] = [];
+
   for (const childrenPlan of plans) scriptChildren(childrenPlan, ops);
+
   return ops;
 }
 
@@ -70,19 +75,24 @@ function scriptChildren(
 function stableSet(sequence: number[]): Uint8Array {
   const tails: number[] = [];
   const back = new Int32Array(sequence.length).fill(-1);
+
   for (let index = 0; index < sequence.length; index++) {
     if (sequence[index] < 0) continue;
     let low = 0;
     let high = tails.length;
+
     while (low < high) {
       const middle = (low + high) >> 1;
       if (sequence[tails[middle]] < sequence[index]) low = middle + 1;
       else high = middle;
     }
+
     if (low > 0) back[index] = tails[low - 1];
     tails[low] = index;
   }
+
   const marks = new Uint8Array(sequence.length);
+
   for (
     let cursor = tails.length ? tails[tails.length - 1] : -1;
     cursor >= 0;
@@ -90,5 +100,6 @@ function stableSet(sequence: number[]): Uint8Array {
   ) {
     marks[cursor] = 1;
   }
+
   return marks;
 }
