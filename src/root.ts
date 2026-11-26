@@ -1,7 +1,8 @@
 import type { Branch } from "./tree.ts";
 import { relate } from "./relation.ts";
-import { script, scriptRoot } from "./script.ts";
+import { script } from "./script.ts";
 import { execute, type Host, type Binding } from "./operation.ts";
+import { rootOperations } from "./util.ts";
 
 export interface Root {
   render(next: Branch): void;
@@ -20,7 +21,7 @@ export function createRoot<N>(host: Host<N>, container: N): Root {
       execute(host, binding, container, matching, operations, {});
     } else if (current || next) {
       // 初回(removed なし)または unmount(added なし)
-      const operations = scriptRoot({ removed: current, added: next });
+      const operations = rootOperations({ prev: current, next });
 
       execute(host, binding, container, null, operations, {});
     }

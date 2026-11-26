@@ -1,8 +1,9 @@
 import { describe, it, expect } from "bun:test";
 import fc from "fast-check";
-import { relate, type Counterparts } from "../src/relation.ts";
-import { script, scriptRoot } from "../src/script.ts";
-import { execute, type Binding, type Observer } from "../src/operation.ts";
+import { relate, type Counterparts } from "./relation.ts";
+import { script, scriptRoot } from "./script.ts";
+import { rootOperations } from "./util.ts";
+import { execute, type Binding, type Observer } from "./operation.ts";
 import {
   n,
   label,
@@ -30,7 +31,7 @@ function setup(
     binding,
     env.container,
     null,
-    scriptRoot({ removed: null, added: prev }),
+    rootOperations({ prev: null, next: prev }),
     observer,
   );
   return { ...env, binding, observer };
@@ -60,7 +61,7 @@ function patchTo(
       env.binding,
       env.container,
       null,
-      scriptRoot({ removed: prev, added: next }),
+      scriptRoot({ prev, next }),
       env.observer,
     );
   }
@@ -290,7 +291,7 @@ describe("observer", () => {
       env.binding,
       env.container,
       null,
-      scriptRoot({ removed: root, added: null }),
+      rootOperations({ prev: root, next: null }),
       observer,
     );
 

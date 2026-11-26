@@ -3,12 +3,12 @@ import type { Counterparts } from "./relation.ts";
 import { plan, type ChildrenPlan } from "./plan.ts";
 
 /**
- * Identifies a position relative to a parent branch.
+ * Identifies a position relative to a parent branch or at the tree root.
  */
 export type Anchor = {
-  /** The parent branch, or `null` for the tree root. */
+  /** The parent branch, or `null` to identify the tree root. */
   readonly parent: Branch | null;
-  /** The branch to insert before, or `null` to append. */
+  /** The branch to insert before, or `null` to append among siblings. */
   readonly before: Branch | null;
 };
 
@@ -21,13 +21,13 @@ export type StructOp =
   | { readonly kind: "remove"; readonly node: Branch };
 
 /**
- * Describes a change to the tree root.
+ * Represents two roots without correspondence.
  */
-export type RootChange = {
-  /** The previous root to remove, or `null` if absent. */
-  readonly removed: Branch | null;
-  /** The next root to create, or `null` if absent. */
-  readonly added: Branch | null;
+export type Pair = {
+  /** The root of the previous tree. */
+  readonly prev: Branch;
+  /** The root of the next tree. */
+  readonly next: Branch;
 };
 
 /**
@@ -47,7 +47,7 @@ export function script(
   nextRoot: Branch,
 ): StructOp[] {
   if (counterparts === null) {
-    return scriptRoot({ removed: prevRoot, added: nextRoot });
+    return scriptRoot({ prev: prevRoot, next: nextRoot });
   }
 
   const plans = plan(counterparts);
@@ -56,23 +56,21 @@ export function script(
 }
 
 /**
- * Generates structural operations for a change to the tree root.
+ * Generates structural operations to replace a root with another root.
  *
- * @param change The previous and next roots.
+ * @param pair The previous and next roots without correspondence.
  * @returns The operations required to replace the root.
  */
-export function scriptRoot(change: RootChange): StructOp[] {
+export function scriptRoot(pair: Pair): StructOp[] {
   const ops: StructOp[] = [];
 
-  if (change.removed) ops.push({ kind: "remove", node: change.removed });
+  ops.push({ kind: "remove", node: pair.prev });
 
-  if (change.added) {
-    ops.push({
-      kind: "create",
-      node: change.added,
-      at: { parent: null, before: null },
-    });
-  }
+  ops.push({
+    kind: "create",
+    node: pair.next,
+    at: { parent: null, before: null },
+  });
 
   return ops;
 }
